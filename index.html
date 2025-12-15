@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SISTEMA DE SECRETARIA - FMM</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="https://drive.google.com/uc?id=1cy-Vf1x4b5xpPF6Y0eULesdJwzFbjZ_k">
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Bibliotecas JS (Supabase + PDF) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #003366;
+            --secondary-color: #0a4275;
+            --accent-color: #e9ecef;
+            --text-color: #333;
+            --sidebar-width: 260px;
+        }
+
+        body { 
+            background-color: #f0f2f5; 
+            font-family: 'Inter', sans-serif; 
+            color: var(--text-color);
+            overflow-x: hidden;
+        }
+        
+        /* Layout */
+        .wrapper { display: flex; min-height: 100vh; }
+        
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--primary-color);
+            color: white;
+            position: fixed;
+            height: 100vh;
+            z-index: 1000;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            white-space: nowrap;
+        }
+
+        .sidebar.closed {
+            width: 0;
+            padding: 0;
+        }
+        
+        .sidebar-brand {
+            padding: 1.5rem;
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: var(--sidebar-width);
+        }
+
+        .nav-links {
+            list-style: none;
+            padding: 1rem 0;
+            margin: 0;
+            flex-grow: 1;
+            min-width: var(--sidebar-width);
+        }
+
+        .nav-item {
+            margin-bottom: 0.25rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 0.8rem 1.5rem;
+            color: rgba(255,255,255,0.8) !important;
+            text-decoration: none;
+            transition: all 0.2s;
+            border-left: 4px solid transparent;
+            cursor: pointer;
+        }
+
+        .nav-link:hover {
+            background: rgba(255,255,255,0.05);
+            color: white !important;
+        }
+
+        .nav-link.active {
+            background: rgba(255,255,255,0.1);
+            color: white !important;
+            border-left-color: #4facfe;
+        }
+
+        .nav-link i { width: 25px; font-size: 1.1rem; }
+
+        /* Main Content */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            width: calc(100% - var(--sidebar-width));
+            transition: all 0.3s ease;
+        }
+
+        .main-content.expanded {
+            margin-left: 0;
+            width: 100%;
+        }
+
+        /* Topbar */
+        .topbar {
+            background: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            position: sticky;
+            top: 0;
+            z-index: 900;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-avatar {
+            width: 35px; height: 35px;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        /* Content Area */
+        .content-area { padding: 2rem; }
+
+        /* Cards */
+        .stats-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+            border-left: 4px solid var(--primary-color);
+            transition: transform 0.2s;
+        }
+        .stats-card:hover { transform: translateY(-3px); }
+        .stats-label { color: #6c757d; font-size: 0.9rem; font-weight: 600; text-transform: uppercase; }
+        .stats-value { font-size: 1.8rem; font-weight: 700; color: var(--primary-color); margin-top: 0.5rem; }
+
+        /* Module Specific Styles */
+        .module-card { border: none; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+        .module-header { background: white; color: var(--primary-color); border-bottom: 1px solid #eee; padding: 1.5rem; border-radius: 12px 12px 0 0; }
+        
+        .badge-fmm { background-color: #003366; color: white; }
+        .badge-seduc { background-color: #2e7d32; color: white; }
+        
+        /* Loader */
+        .loading-overlay {
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            display: flex;
+            justify-content: center; align-items: center; flex-direction: column;
+            backdrop-filter: blur(5px);
+        }
+        .spinner-logo {
+            width: 50px; height: 50px;
+            border: 4px solid #f3f3f3; border-top: 4px solid var(--primary-color); border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .btn-historico {
+            background-color: #fff; border: 1px solid #ddd; color: #333;
+            transition: all 0.2s;
+        }
+        .btn-historico:hover { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
+    </style>
+</head>
+<body>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // =================================================================================
+        // CONFIGURAÇÕES & SERVICES
+        // =================================================================================
+        const CONFIG = {
+            SUPABASE: {
+                URL: 'https://sikfohqafixxxfxtcrrq.supabase.co',
+                KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpa2ZvaHFhZml4eHhmeHRjcnJxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzMTU0MTUsImV4cCI6MjA3MTg5MTQxNX0.bxhMsYdopLEVGVOyS_BJ5PPfRvfzTeQCJaF5YNHJ0Ho'
+            },
+            ASSETS: {
+                LOGO_URL: 'https://drive.google.com/uc?id=1iKa009R-VVGNGTCKvmuZrOxueychaK3h',
+                PROXY_URL: 'https://wsrv.nl/?url='
+            },
+            PERFIL_TEXTOS: {
+                INFORMATICA: `Perfil Profissional de Conclusão\n\nO Técnico em Informática será habilitado para:\n\n- Desenvolver sistemas computacionais utilizando ambiente de desenvolvimento.\n- Realizar modelagem, desenvolvimento, testes, implementação e manutenção de sistemas computacionais.\n- Modelar, construir e realizar manutenção de banco de dados.\n- Executar montagem, instalação e configuração de equipamentos de informática.\n- Instalar e configurar sistemas operacionais e aplicativos em equipamentos computacionais.\n- Realizar manutenção preventiva e corretiva de equipamentos de informática.\n- Instalar e configurar dispositivos de acesso à rede e realizar testes de conectividade.\n- Realizar atendimento help-desk.\n- Operar, instalar, configurar e realizar manutenção em redes de computadores.\n- Aplicar técnicas de instalação e configuração da rede física e lógica.\n- Instalar, configurar e administrar sistemas operacionais em redes de computadores.\n- Executar as rotinas de monitoramento do ambiente operacional.\n- Identificar e registrar os desvios e adotar os procedimentos de correção.\nExecutar procedimentos de segurança, pré-definidos, para ambiente de rede. Para atuação como Técnico em Informática, são fundamentais:\n- Conhecimentos e saberes relacionados aos processos de planejamento e execução de projetos computacionais de forma a garantir a entrega de produtos digitais,\nanálise de softwares, testagem de protótipos, de acordo com suas finalidades.\n- Conhecimentos e saberes relacionados às normas técnicas, à liderança de equipes, à solução de problemas técnicos e à assertividade na comunicação de laudos\ne análises.\n- Habilidades relacionadas à construção de soluções em BI e integrações sistêmica.\n\nObservações:\nEducação Profissional Técnica concomitante ao Ensino Médio.\nO (a) aluno(a) cumpriu a carga horária exigida para o estágio obrigatório.\nA Resolução Nº 150/2017 CEE/AM altera a denominação da Fundação Nokia de Ensino para Fundação Matias Machline.\nMédia para aprovação: 6.0(seis).`,
+                MECATRONICA: `Perfil Profissional de Conclusão\n\nO Técnico em Mecatrônica será habilitado para:\n\nProjetar, instalar e operar equipamentos automatizados e/ou robotizados empregados em processos de manufatura considerando as normas,\nos padrões e os requisitos técnicos de qualidade, saúde e segurança e de meio ambiente.\nRealizar programação, parametrização, medições e testes de equipamentos automatizados em processos de manufatura.\nRealizar integração de equipamentos mecânicos e eletrônicos utilizados em processos de manufatura.\nReconhecer tecnologias inovadoras presentes no segmento visando a atender às transformações digitais na sociedade.\n\nPara atuação como Técnico em Mecatrônica, são fundamentais:\n\nConhecimentos e saberes relacionados ao planejamento e implementação de processos automatizados de manufatura de modo a assegurar a saúde e a segurança\ndos trabalhadores e dos usuários.\nConhecimento e saberes relacionados à sustentabilidade do processo produtivo, às técnicas e processos de produção, às normas técnicas, à liderança de equipes,\nà solução de problemas técnicos e trabalhistas e à gestão de conflitos.\n\nObservações:\nEducação Profissional Técnica concomitante ao Ensino Médio.\nO (a) aluno(a) cumpriu a carga horária exigida para o estágio obrigatório.\nA Resolução Nº 150/2017 CEE/AM altera a denominação da Fundação Nokia de Ensino para Fundação Matias Machline.\nMédia para aprovação: 6.0(seis).`
+            }
+        };
+
+        class DataService {
+            constructor() {
+                this.client = supabase.createClient(CONFIG.SUPABASE.URL, CONFIG.SUPABASE.KEY);
+            }
+            async getSeries() {
+                const { data, error } = await this.client.from('series').select('id, nome').order('id');
+                if (error) throw error;
+                return data;
+            }
+            async getAlunosPorSerie(serieId) {
+                const { data, error } = await this.client
+                    .from('alunos')
+                    .select(`
+                        ra, nome, tipo_origem, status_matricula,
+                        matriculas!inner (
+                            id,
+                            turmas!inner ( nome, series!inner(id), ano_letivo ),
+                            anual_basica ( mf, disciplinas ( nome ) )
+                        )
+                    `)
+                    .eq('status_matricula', 'CURSANDO')
+                    .eq('matriculas.turmas.series.id', serieId)
+                    .order('nome');
+                if (error) throw error;
+                return data;
+            }
+            async getAllActiveAlunos() {
+                const { data, error } = await this.client
+                    .from('alunos')
+                    .select(`
+                        ra, nome, email, tipo_origem, status_matricula,
+                        matriculas!inner (
+                            id,
+                            turmas!inner ( nome, series!inner(id, nome), ano_letivo )
+                        )
+                    `)
+                    .eq('status_matricula', 'CURSANDO')
+                    .order('nome');
+                if (error) throw error;
+                return data;
+            }
+            // ATUALIZADO: Busca e mescla dados atuais (matriculas) e de arquivo (2023, 2024)
+            async getHistoricoCompleto(ra) {
+                // 1. Dados Atuais (2025 - matriculas)
+                const p1 = this.client
+                    .from('matriculas')
+                    .select(`
+                        id,
+                        turmas ( ano_letivo, serie_id, nome, cursos ( nome ) ),
+                        anual_basica ( mf, disciplinas ( nome, carga_horaria, area ) ),
+                        notas_tecnica ( ns, disciplinas ( nome, carga_horaria, area ) )
+                    `)
+                    .eq('aluno_ra', ra)
+                    .order('turmas(ano_letivo)', { ascending: true });
+
+                // 2. Dados Arquivados 2023 (1ª Série)
+                const p2Bas = this.client.from('notas_basica_2023').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
+                const p2Tec = this.client.from('notas_tecnica_2023').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
+
+                // 3. Dados Arquivados 2024 (2ª Série)
+                const p3Bas = this.client.from('notas_basica_2024').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
+                const p3Tec = this.client.from('notas_tecnica_2024').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
+
+                const [
+                    { data: currentData, error: err1 },
+                    { data: bas23, error: err2 }, { data: tec23, error: err3 },
+                    { data: bas24, error: err4 }, { data: tec24, error: err5 }
+                ] = await Promise.all([p1, p2Bas, p2Tec, p3Bas, p3Tec]);
+
+                if (err1) throw err1;
+
+                // Normalização dos dados de arquivo para o formato esperado pelo PDFGenerator
+                const createArchivedEntry = (ano, serieId, nomeTurma, basicas, tecnicas) => {
+                    if ((!basicas || basicas.length === 0) && (!tecnicas || tecnicas.length === 0)) return null;
+                    return {
+                        id: `archive_${ano}`,
+                        turmas: {
+                            ano_letivo: ano,
+                            serie_id: serieId,
+                            nome: nomeTurma || 'N/D',
+                            cursos: { nome: 'TÉCNICO' }
+                        },
+                        anual_basica: basicas ? basicas.map(n => ({ mf: n.mf, disciplinas: n.disciplinas })) : [],
+                        notas_tecnica: tecnicas ? tecnicas.map(n => ({ ns: n.ns, disciplinas: n.disciplinas })) : []
+                    };
+                };
+
+                const nomeTurma23 = bas23?.[0]?.nome_turma_origem || tec23?.[0]?.nome_turma_origem || '';
+                const nomeTurma24 = bas24?.[0]?.nome_turma_origem || tec24?.[0]?.nome_turma_origem || '';
+
+                const entry2023 = createArchivedEntry(2023, 1, nomeTurma23, bas23, tec23);
+                const entry2024 = createArchivedEntry(2024, 2, nomeTurma24, bas24, tec24);
+
+                const finalData = [];
+                if (entry2023) finalData.push(entry2023);
+                if (entry2024) finalData.push(entry2024);
+                if (currentData) finalData.push(...currentData);
+
+                return finalData.sort((a, b) => a.turmas.ano_letivo - b.turmas.ano_letivo);
+            }
+            async getDadosPessoais(ra) {
+                const { data, error } = await this.client
+                    .from('dados_alunos')
+                    .select('*')
+                    .eq('aluno_ra', ra)
+                    .single();
+                if (error && error.code !== 'PGRST116') throw error; 
+                return data;
+            }
+            async getTurmasStats() {
+                const { data: turmas, error: errTurmas } = await this.client
+                    .from('turmas')
+                    .select(`
+                        id, nome, ano_letivo,
+                        series ( nome ),
+                        cursos ( nome )
+                    `)
+                    .order('ano_letivo', { ascending: false })
+                    .order('nome', { ascending: true });
+                
+                if (errTurmas) throw errTurmas;
+
+                return turmas.map(t => ({
+                    id: t.id,
+                    nome: t.nome,
+                    ano_letivo: t.ano_letivo,
+                    serie_nome: t.series?.nome || '-',
+                    curso_nome: t.cursos?.nome || 'Geral'
+                }));
+            }
+            async getNotasSeduc() {
+                const ANO_ATUAL = 2025; 
+
+                const { data, error } = await this.client
+                    .from('alunos')
+                    .select(`
+                        ra, nome, tipo_origem,
+                        matriculas!inner (
+                            id,
+                            turmas!inner (
+                                nome,
+                                series!inner ( id, nome ),
+                                ano_letivo
+                            ),
+                            anual_basica (
+                                mf,
+                                disciplinas ( sigla )
+                            ),
+                            notas_tecnica (
+                                ns,
+                                disciplinas ( sigla )
+                            )
+                        )
+                    `)
+                    .eq('tipo_origem', 'SEDUC')
+                    .eq('status_matricula', 'CURSANDO')
+                    .eq('matriculas.turmas.ano_letivo', ANO_ATUAL)
+                    .order('nome');
+
+                if (error) throw error;
+
+                return data.filter(aluno => {
+                    const serieId = aluno.matriculas[0]?.turmas?.series?.id;
+                    return serieId === 1 || serieId === 3;
+                });
+            }
+            async getDashboardStats() {
+                const currentYear = new Date().getFullYear();
+                const { count: totalAlunos, error: errAlunos } = await this.client
+                    .from('alunos')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('status_matricula', 'CURSANDO');
+                if (errAlunos) throw errAlunos;
+
+                const { count: totalTurmas, error: errTurmas } = await this.client
+                    .from('turmas')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('ano_letivo', currentYear);
+                if (errTurmas) throw errTurmas;
+
+                const { data: matriculas, error: errMat } = await this.client
+                    .from('matriculas')
+                    .select(`
+                        id,
+                        anual_basica ( mf ),
+                        alunos!inner ( status_matricula )
+                    `)
+                    .eq('alunos.status_matricula', 'CURSANDO');
+                
+                if (errMat) throw errMat;
+
+                let countRecuperacao = 0;
+                matriculas.forEach(m => {
+                    const notas = m.anual_basica || [];
+                    const temReprovacao = notas.some(n => n.mf !== null && Number(n.mf) < 6.0);
+                    if (temReprovacao) countRecuperacao++;
+                });
+
+                const countAprovados = matriculas.length - countRecuperacao; 
+
+                return {
+                    alunos: totalAlunos,
+                    turmas: totalTurmas,
+                    aprovados: countAprovados,
+                    recuperacao: countRecuperacao
+                };
+            }
+        }
+
+        class PDFGenerator {
+            constructor() {
+                this.jsPDF = window.jspdf.jsPDF;
+            }
+            async generate(alunoNome, turma, origem, historicoData, dadosPessoais, action = 'save') {
+                const doc = new this.jsPDF('p', 'mm', 'a4');
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const imgLogo = await this._loadLogo();
+                const nomeCurso = this._extractCurso(historicoData);
+                const { dadosTabela, totalCH, dadosTrajetoria } = this._processData(historicoData, origem);
+
+                doc.setProperties({ title: `${alunoNome} - ${turma}`, author: 'Fundação Matias Machline' });
+
+                // Renderiza as páginas
+                this._appendStudentPages(doc, imgLogo, alunoNome, turma, origem, historicoData, dadosPessoais);
+
+                const safeNome = alunoNome.replace(/[^a-z0-9à-ú\s-]/gi, '_').trim();
+                const safeTurma = turma.replace(/[^a-z0-9à-ú\s-]/gi, '_').trim();
+                const filename = `${safeNome} - ${safeTurma}.pdf`;
+
+                if (action === 'save') doc.save(filename);
+                else window.open(doc.output('bloburl'), '_blank');
+            }
+
+            async generateBatch(alunosList, turma, dbService, onProgress, signal) {
+                const doc = new this.jsPDF('p', 'mm', 'a4');
+                const imgLogo = await this._loadLogo();
+                
+                doc.setProperties({ title: `Lote Históricos - ${turma}`, author: 'Fundação Matias Machline' });
+
+                for (let i = 0; i < alunosList.length; i++) {
+                    if (signal && signal.aborted) {
+                        throw new Error('CANCELLED');
+                    }
+
+                    const aluno = alunosList[i];
+                    if (onProgress) onProgress(i + 1, alunosList.length, aluno.nome);
+
+                    try {
+                        const dadosPessoais = await dbService.getDadosPessoais(aluno.ra);
+                        const historicoData = await dbService.getHistoricoCompleto(aluno.ra);
+
+                        if (i > 0) doc.addPage();
+                        this._appendStudentPages(doc, imgLogo, aluno.nome, aluno.turma, aluno.origem, historicoData, dadosPessoais);
+                    } catch (error) {
+                        console.error(`Erro ao processar aluno ${aluno.nome}:`, error);
+                    }
+                }
+
+                const safeTurma = turma.replace(/[^a-z0-9à-ú\s-]/gi, '_').trim();
+                doc.save(`Historicos_Lote_${safeTurma}.pdf`);
+            }
+
+            _appendStudentPages(doc, imgLogo, alunoNome, turma, origem, historicoData, dadosPessoais) {
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const nomeCurso = this._extractCurso(historicoData);
+                const { dadosTabela, totalCH, dadosTrajetoria } = this._processData(historicoData, origem);
+
+                let finalY = this._drawHeader(doc, pageWidth, imgLogo, alunoNome, dadosPessoais);
+                finalY = this._drawGradesTable(doc, finalY, dadosTabela, totalCH);
+                this._drawTrajectoryTable(doc, finalY, dadosTrajetoria);
+                
+                doc.addPage();
+                finalY = this._drawHeader(doc, pageWidth, imgLogo, alunoNome, dadosPessoais);
+                finalY = this._drawProfile(doc, finalY, nomeCurso);
+                this._drawFooter(doc, pageWidth, finalY);
+            }
+
+            async _loadLogo() {
+                return new Promise((resolve) => {
+                    const proxyUrl = `${CONFIG.ASSETS.PROXY_URL}${encodeURIComponent(CONFIG.ASSETS.LOGO_URL)}`;
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous";
+                    img.onload = () => resolve(img);
+                    img.onerror = () => resolve(null);
+                    img.src = proxyUrl;
+                });
+            }
+            _extractCurso(data) {
+                let curso = "TÉCNICO EM INFORMÁTICA";
+                if (data && data.length > 0) {
+                    const ultima = data[data.length - 1];
+                    if (ultima.turmas?.cursos?.nome) curso = ultima.turmas.cursos.nome.toUpperCase();
+                }
+                return curso;
+            }
+            _processData(data, origem) {
+                const historico = {};
+                const dadosTrajetoria = [];
+                let totalCH = 0;
+                data.forEach(m => {
+                    const serie = m.turmas?.serie_id;
+                    const ano = m.turmas?.ano_letivo;
+                    const notasB = m.anual_basica || [];
+                    const notasT = m.notas_tecnica || [];
+                    if (serie && ano) {
+                        dadosTrajetoria.push([String(ano), `${serie}ª`, "FUNDAÇÃO MATIAS MACHLINE", "MANAUS", "AM", "APROVADO"]);
+                    }
+                    const processar = (n, tipo) => {
+                        const disc = n.disciplinas?.nome?.toUpperCase() || 'S/N';
+                        const ch = n.disciplinas?.carga_horaria || 80;
+                        const val = tipo === 'B' ? n.mf : n.ns;
+                        // Adiciona propriedade 'type' para ordenação
+                        if (!historico[disc]) historico[disc] = { type: tipo, 1: {n:'-',c:0}, 2: {n:'-',c:0}, 3: {n:'-',c:0} };
+                        if (serie >= 1 && serie <= 3) {
+                            historico[disc][serie] = { n: val !== null ? String(val).replace('.',',') : '-', c: ch };
+                        }
+                    };
+                    if (origem !== 'SEDUC') notasB.forEach(n => processar(n, 'B'));
+                    notasT.forEach(n => processar(n, 'T'));
+                });
+
+                // Ordenação: Básicas primeiro, depois Técnicas (alfabético dentro dos grupos)
+                const dadosTabela = Object.keys(historico).sort((a, b) => {
+                    if (historico[a].type !== historico[b].type) {
+                        return historico[a].type === 'B' ? -1 : 1;
+                    }
+                    return a.localeCompare(b);
+                }).map(d => {
+                    const h = historico[d];
+                    const showCh1 = h[1].n !== '-' ? h[1].c : 0;
+                    const showCh2 = h[2].n !== '-' ? h[2].c : 0;
+                    const showCh3 = h[3].n !== '-' ? h[3].c : 0;
+                    const soma = showCh1 + showCh2 + showCh3;
+                    totalCH += soma;
+                    return [d, h[1].n, (showCh1||'-'), h[2].n, (showCh2||'-'), h[3].n, (showCh3||'-'), (soma||'-')];
+                });
+                return { dadosTabela, totalCH, dadosTrajetoria };
+            }
+            _formatDate(dateString) {
+                if (!dateString) return '-';
+                const date = new Date(dateString);
+                return date.toLocaleDateString('pt-BR');
+            }
+            _drawHeader(doc, pw, logo, nomeAluno, dados) {
+                if (logo) {
+                    const w = 35, h = w * (261 / 1345);
+                    doc.addImage(logo, 'JPEG', 10, 17, w, h);
+                }
+                doc.setTextColor(0,0,0);
+                doc.setFont("helvetica", "bold"); doc.setFontSize(12);
+                doc.text("FUNDAÇÃO MATIAS MACHLINE", pw/2, 16, {align: "center"});
+                doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+                doc.text("Av. Min. João Gonçalves de Souza, 916 - Distrito Industrial I, Manaus/AM", pw/2, 21, {align: "center"});
+                doc.text("Reconhecimento: Parecer 105/89-CEE 20/09/89. Homologado em 27/09/89", pw/2, 25, {align: "center"});
+                doc.text("Telefone: (92) 2129-2999", pw/2, 29, {align: "center"});
+                doc.setLineWidth(0.4); doc.line(10, 33, pw-10, 33);
+                doc.setFont("times", "bold"); doc.setFontSize(10);
+                doc.text("HISTÓRICO ESCOLAR - ENSINO MÉDIO", pw/2, 42, {align: "center"});
+                
+                const yStart = 48;
+                const hRow = 4; 
+                const fontSizeData = 7; 
+                const d = dados || {};
+                
+                const fields = [
+                    {l:"Aluno(a):", v:nomeAluno.toUpperCase(), x:10, w:110, y:0},
+                    {l:"Cpf:", v: d.cpf || '-', x:120, w:45, y:0},
+                    {l:"Data Nasc.:", v: this._formatDate(d.data_nascimento), x:165, w:35, y:0},
+                    {l:"Nacionalidade:", v: (d.nacionalidade || 'BRASILEIRA').toUpperCase(), x:10, w:60, y:1},
+                    {l:"Natural de:", v: (d.naturalidade || '-').toUpperCase(), x:70, w:90, y:1},
+                    {l:"Estado:", v: d.uf_nascimento || '-', x:160, w:40, y:1},
+                    {l:"Curso Anterior:", v: (d.curso_anterior || "ENSINO FUNDAMENTAL").toUpperCase(), x:10, w:70, y:2}, 
+                    {l:"Estabelecimento:", v: (d.escola_origem || '-').toUpperCase(), x:80, w:120, y:2},
+                    {l:"Município:", v: (d.cidade_origem || '-').toUpperCase(), x:10, w:110, y:3},
+                    {l:"Estado:", v: d.uf_origem || '-', x:120, w:40, y:3},
+                    {l:"Ano Conclusão:", v: '-', x:160, w:40, y:3}, 
+                ];
+
+                doc.setLineWidth(0.1); doc.setDrawColor(0);
+                fields.forEach(f => {
+                    const yPos = yStart + (f.y * hRow);
+                    doc.rect(f.x, yPos, f.w, hRow);
+                    doc.setFont("times", "bold"); doc.setFontSize(fontSizeData);
+                    doc.text(f.l, f.x+2, yPos+3);
+                    const lw = doc.getTextWidth(f.l);
+                    doc.setFont("times", "normal");
+                    doc.text(String(f.v), f.x+2+lw+1.5, yPos+3);
+                });
+                return yStart + (4 * hRow);
+            }
+            _drawGradesTable(doc, startY, body, totalCH) {
+                doc.autoTable({
+                    startY: startY + 2, // Reduzido de 5 para 2 (Aproxima do cabeçalho)
+                    margin: { left: 10 }, tableWidth: 190,
+                    head: [
+                        [{ content: 'Componente Curricular', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                         { content: '1ª Série', colSpan: 2, styles: { halign: 'center' } },
+                         { content: '2ª Série', colSpan: 2, styles: { halign: 'center' } },
+                         { content: '3ª Série', colSpan: 2, styles: { halign: 'center' } },
+                         { content: 'Total', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } }],
+                        ['Nota', 'CH', 'Nota', 'CH', 'Nota', 'CH']
+                    ],
+                    body: body, theme: 'grid',
+                    styles: { font: 'times', fontSize: 6, cellPadding: 0.7, lineColor: 0, lineWidth: 0.1, textColor: 0, halign: 'center' },
+                    columnStyles: { 0: { halign: 'left' } },
+                    headStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: 'bold', lineWidth: 0.1, lineColor: 0 },
+                    foot: [[{ content: 'CARGA HORÁRIA TOTAL', colSpan: 7, styles: { halign: 'left' } }, { content: String(totalCH), styles: { halign: 'center' } }]],
+                    footStyles: { fillColor: [230, 230, 230], textColor: 0, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: 0 }
+                });
+                return doc.lastAutoTable.finalY;
+            }
+            _drawTrajectoryTable(doc, startY, body) {
+                doc.autoTable({
+                    startY: startY + 2, // Reduzido de 5 para 2 (Aproxima da tabela de notas)
+                    margin: { left: 10 }, tableWidth: 190,
+                    head: [['Ano', 'Série', 'Estabelecimento', 'Cidade', 'UF', 'Resultado']],
+                    body: body.length ? body : [['-', '-', 'NENHUM REGISTRO', '-', '-', '-']],
+                    theme: 'grid',
+                    styles: { font: 'times', fontSize: 6, cellPadding: 0.5, lineColor: 0, lineWidth: 0.1, textColor: 0, halign: 'center' },
+                    headStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: 'bold', lineWidth: 0.1, lineColor: 0 },
+                    columnStyles: { 2: { halign: 'left' } }
+                });
+                return doc.lastAutoTable.finalY;
+            }
+            _drawProfile(doc, startY, nomeCurso) {
+                const txt = nomeCurso.includes("INFORMÁTICA") ? CONFIG.PERFIL_TEXTOS.INFORMATICA : CONFIG.PERFIL_TEXTOS.MECATRONICA;
+                doc.autoTable({
+                    startY: startY + 2, // Reduzido de 5 para 2 (Aproxima do cabeçalho na pág 2)
+                    margin: { left: 10 }, tableWidth: 190,
+                    head: [[`Perfil Profissional: ${nomeCurso}`]],
+                    body: [[txt]],
+                    theme: 'grid',
+                    headStyles: { fillColor: 255, textColor: 0, fontStyle: 'bold', halign: 'left', lineWidth: 0.1, lineColor: 0 },
+                    styles: { font: 'times', fontSize: 9, cellPadding: 3, lineColor: 0, lineWidth: 0.1, textColor: 0, halign: 'left', valign: 'top' }
+                });
+                return doc.lastAutoTable.finalY;
+            }
+            _drawFooter(doc, pw, startY) {
+                let y = startY + 40;
+                if (y > 270) { doc.addPage(); y = 40; }
+                const hoje = new Date().toLocaleDateString('pt-BR', {day:'numeric', month:'long', year:'numeric'});
+                doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+                doc.text(`Manaus, ${hoje}.`, pw - 20, y - 15, { align: "right" });
+                doc.setLineWidth(0.3); doc.line(20, y, 80, y); doc.line(130, y, 190, y);
+                doc.setFontSize(8);
+                doc.text("Secretário(a)", 50, y + 5, { align: "center" });
+                doc.text("Diretor(a)", 160, y + 5, { align: "center" });
+            }
+            generateList(alunos) {
+                const doc = new this.jsPDF('p', 'mm', 'a4');
+                const pageWidth = doc.internal.pageSize.getWidth();
+                doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(0, 0, 0);
+                doc.text("Relatório de Alunos Filtrados", pageWidth / 2, 15, { align: "center" });
+                doc.setFontSize(9); doc.setFont("helvetica", "normal");
+                doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, pageWidth / 2, 22, { align: "center" });
+                const columns = ["RA", "Nome do Aluno", "Ano", "Turma", "Origem", "Status Final"];
+                const rows = alunos.map(a => [a.ra, a.nome, a.ano, a.turma, a.origem, a.qtdReprovadas === 0 ? "Aprovado" : `Recup. (${a.qtdReprovadas})`]);
+                doc.autoTable({
+                    head: [columns], body: rows, startY: 30, theme: 'grid',
+                    headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold', halign: 'center' },
+                    styles: { font: 'helvetica', fontSize: 8, cellPadding: 3, halign: 'center', lineColor: [200, 200, 200], lineWidth: 0.1 },
+                    columnStyles: { 1: { halign: 'left' } },
+                    alternateRowStyles: { fillColor: [248, 249, 250] }
+                });
+                doc.save("Lista_Alunos_Filtrada.pdf");
+            }
+        }
+
+        // =================================================================================
+        // COMPONENTES DE UI
+        // =================================================================================
+
+        const LoadingOverlay = ({ visible, text }) => {
+            if (!visible) return null;
+            return (
+                <div className="loading-overlay">
+                    <div className="spinner-logo"></div>
+                    <div className="mt-3 fw-bold" style={{color: 'var(--primary-color)'}}>{text}</div>
+                </div>
+            );
+        };
+
+        const BatchProgressOverlay = ({ visible, current, total, currentName, onCancel }) => {
+            if (!visible) return null;
+            
+            const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+
+            return (
+                <div className="loading-overlay" style={{zIndex: 2000}}>
+                    <div className="card shadow-lg p-4 bg-white rounded-3 border-0" style={{width: '90%', maxWidth: '450px'}}>
+                        <div className="text-center mb-4">
+                            <div className="spinner-logo mx-auto mb-3" style={{width:'40px', height:'40px', borderWidth:'3px'}}></div>
+                            <h5 className="fw-bold" style={{color: 'var(--primary-color)'}}>Gerando Lote de Históricos</h5>
+                        </div>
+
+                        <div className="progress mb-2" style={{height: '25px', fontSize: '0.9rem'}}>
+                            <div 
+                                className="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                                role="progressbar" 
+                                style={{width: `${percentage}%`}}
+                            >
+                                {percentage}%
+                            </div>
+                        </div>
+
+                        <div className="d-flex justify-content-between text-muted small mb-3">
+                            <span>Progresso:</span>
+                            <span>{current} de {total}</span>
+                        </div>
+
+                        <div className="alert alert-light border text-center mb-4 py-2">
+                            <small className="text-muted d-block mb-1">Gerando arquivo de:</small>
+                            <div className="fw-bold text-dark text-truncate">{currentName || 'Inicializando...'}</div>
+                        </div>
+
+                        <button className="btn btn-outline-danger w-100 fw-bold" onClick={onCancel}>
+                            <i className="fas fa-times-circle me-2"></i>
+                            Cancelar Operação
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const Sidebar = ({ activeTab, onTabChange, isOpen }) => {
+            return (
+                <nav className={`sidebar ${!isOpen ? 'closed' : ''}`}>
+                    <div className="sidebar-brand">
+                        <i className="fas fa-university"></i>
+                        <span>SECRETARIA FMM</span>
+                    </div>
+                    <ul className="nav-links">
+                        <li className="nav-item">
+                            <a 
+                                className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`}
+                                onClick={() => onTabChange('dashboard')}
+                            >
+                                <i className="fas fa-chart-pie"></i>
+                                <span>Dashboard</span>
+                            </a>
+                        </li>
+                        <li className="nav-item">
+                            <a 
+                                className={`nav-link ${activeTab === 'alunos' ? 'active' : ''}`}
+                                onClick={() => onTabChange('alunos')}
+                            >
+                                <i className="fas fa-user-graduate"></i>
+                                <span>Alunos</span>
+                            </a>
+                        </li>
+                        <li className="nav-item">
+                            <a 
+                                className={`nav-link ${activeTab === 'turmas' ? 'active' : ''}`}
+                                onClick={() => onTabChange('turmas')}
+                            >
+                                <i className="fas fa-users"></i>
+                                <span>Turmas</span>
+                            </a>
+                        </li>
+                        <li className="nav-item">
+                            <a 
+                                className={`nav-link ${activeTab === 'notas_seduc' ? 'active' : ''}`}
+                                onClick={() => onTabChange('notas_seduc')}
+                            >
+                                <i className="fas fa-calculator"></i>
+                                <span>Notas Seduc</span>
+                            </a>
+                        </li>
+                        <div className="my-2 border-top border-secondary opacity-25"></div>
+                        <li className="nav-item">
+                            <a 
+                                className={`nav-link ${activeTab === 'historicos' ? 'active' : ''}`}
+                                onClick={() => onTabChange('historicos')}
+                            >
+                                <i className="fas fa-file-signature"></i>
+                                <span>Emissão Históricos</span>
+                            </a>
+                        </li>
+                    </ul>
+                    <div className="p-3 mt-auto">
+                        <small className="d-block text-white-50">Versão 2.6.0</small>
+                    </div>
+                </nav>
+            );
+        };
+
+        const Topbar = ({ onToggleSidebar }) => {
+            return (
+                <header className="topbar">
+                    <div className="d-flex align-items-center gap-3">
+                        <button className="btn btn-link text-secondary p-0" onClick={onToggleSidebar}>
+                            <i className="fas fa-bars fa-lg"></i>
+                        </button>
+                        <h5 className="m-0 fw-bold text-secondary">Painel Administrativo</h5>
+                    </div>
+                    <div className="user-profile">
+                        <div className="text-end me-2 d-none d-sm-block">
+                            <div className="fw-bold small">Secretaria Geral</div>
+                            <div className="text-muted small" style={{fontSize: '0.75rem'}}>Admin</div>
+                        </div>
+                        <div className="user-avatar">
+                            SG
+                        </div>
+                    </div>
+                </header>
+            );
+        };
+
+        const DashboardView = ({ dbService }) => {
+            const [stats, setStats] = useState({ alunos: 0, turmas: 0, aprovados: 0, recuperacao: 0 });
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                const loadStats = async () => {
+                    try {
+                        const data = await dbService.getDashboardStats();
+                        setStats(data);
+                    } catch (e) {
+                        console.error("Erro ao carregar dashboard:", e);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                loadStats();
+            }, [dbService]);
+
+            if (loading) {
+                return (
+                    <div className="d-flex justify-content-center align-items-center" style={{height: '300px'}}>
+                        <div className="spinner-border text-primary" role="status">
+                            <span className="visually-hidden">Carregando...</span>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="fade-in">
+                    <h3 className="fw-bold mb-4" style={{color: 'var(--primary-color)'}}>Visão Geral</h3>
+                    <div className="row g-4 mb-4">
+                        <div className="col-md-3">
+                            <div className="stats-card">
+                                <div className="stats-label">Total Alunos Cursando</div>
+                                <div className="stats-value">{stats.alunos}</div>
+                            </div>
+                        </div>
+                        <div className="col-md-3">
+                            <div className="stats-card" style={{borderLeftColor: '#2e7d32'}}>
+                                <div className="stats-label">Turmas ({new Date().getFullYear()})</div>
+                                <div className="stats-value">{stats.turmas}</div>
+                            </div>
+                        </div>
+                        <div className="col-md-3">
+                            <div className="stats-card" style={{borderLeftColor: '#0d6efd'}}>
+                                <div className="stats-label">Alunos Aprovados</div>
+                                <div className="stats-value">{stats.aprovados}</div>
+                            </div>
+                        </div>
+                        <div className="col-md-3">
+                            <div className="stats-card" style={{borderLeftColor: '#ef4444'}}>
+                                <div className="stats-label">Em Recuperação</div>
+                                <div className="stats-value">{stats.recuperacao}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="alert alert-info border-0 shadow-sm">
+                        <i className="fas fa-info-circle me-2"></i>
+                        Bem-vindo ao novo módulo de Gestão Acadêmica. Selecione uma opção no menu lateral para começar.
+                    </div>
+                </div>
+            );
+        };
+
+        const NotasSeducModule = ({ dbService }) => {
+            const [loading, setLoading] = useState(false);
+            const [listaNotas, setListaNotas] = useState([]);
+
+            const processGrades = (notasBasicas, notasTecnicas, serieId) => {
+                const mapNotas = {};
+                notasBasicas.forEach(n => {
+                    if (n.disciplinas?.sigla && n.mf !== null) {
+                        mapNotas[n.disciplinas.sigla.toUpperCase()] = Number(n.mf);
+                    }
+                });
+
+                const getVal = (sigla) => {
+                    return mapNotas[sigla] !== undefined ? mapNotas[sigla].toFixed(1) : '-';
+                };
+
+                const getAvg = (siglas) => {
+                    let sum = 0;
+                    let count = 0;
+                    siglas.forEach(s => {
+                        if (mapNotas[s] !== undefined) {
+                            sum += mapNotas[s];
+                            count++;
+                        }
+                    });
+                    return count > 0 ? (sum / count).toFixed(1) : '-';
+                };
+
+                const lport = getVal('L.PORT');
+                const arte = getVal('ARTE');
+                const edfis = getVal('ED.FIS');
+                const ingles = getVal('INGLÊS');
+                const red = getVal('RED');
+
+                const fisica = getVal('FÍSICA');
+                const quim = getVal('QUIM');
+                const bio = getVal('BIO');
+
+                const mat = getVal('MAT');
+                const matApl = getVal('MAT.APL');
+
+                const hist = getVal('HIST');
+                const geo = getVal('GEO');
+                const socio = getVal('SOCIO');
+                const filo = getVal('FILO');
+
+                let ucaSiglas = ['P.VIDA', 'INGLÊS', 'ED.FIS', 'BIO', 'FÍSICA', 'QUIM', 'LITER'];
+                if (serieId === 1) { 
+                    ucaSiglas.push('ENS.RELIG');
+                }
+                const uca = getAvg(ucaSiglas);
+
+                let sumTec = 0;
+                let countTec = 0;
+                notasTecnicas.forEach(n => {
+                    if (n.ns !== null) {
+                        sumTec += Number(n.ns);
+                        countTec++;
+                    }
+                });
+                const formacaoTecnica = countTec > 0 ? (sumTec / countTec).toFixed(1) : '-';
+
+                const colunasParaMedia = [
+                    lport, arte, edfis, ingles, red,
+                    fisica, quim, bio, 
+                    mat, matApl,
+                    hist, geo, socio, filo, 
+                    uca, formacaoTecnica
+                ];
+                
+                let sumFinal = 0;
+                let countFinal = 0;
+                colunasParaMedia.forEach(val => {
+                    if (val !== '-' && !isNaN(parseFloat(val))) {
+                        sumFinal += parseFloat(val);
+                        countFinal++;
+                    }
+                });
+                const mediaFinal = countFinal > 0 ? (sumFinal / countFinal).toFixed(1) : '-';
+
+                return { 
+                    lport, arte, edfis, ingles, red,
+                    fisica, quim, bio,
+                    mat, matApl,
+                    hist, geo, socio, filo,
+                    uca, formacaoTecnica, mediaFinal 
+                };
+            };
+
+            const loadData = async () => {
+                setLoading(true);
+                try {
+                    const data = await dbService.getNotasSeduc();
+                    const processed = data.map(aluno => {
+                        const mat = aluno.matriculas[0];
+                        const notasBasicas = mat?.anual_basica || [];
+                        const notasTecnicas = mat?.notas_tecnica || [];
+                        const serieId = mat?.turmas?.series?.id;
+                        
+                        let qtdReprovadas = 0;
+                        const reprovadasNomes = [];
+
+                        notasBasicas.forEach(n => {
+                            if (n.mf !== null && Number(n.mf) < 6.0) {
+                                qtdReprovadas++;
+                                if (n.disciplinas?.sigla) reprovadasNomes.push(n.disciplinas.sigla);
+                            }
+                        });
+
+                        notasTecnicas.forEach(n => {
+                            if (n.ns !== null && Number(n.ns) < 6.0) {
+                                qtdReprovadas++;
+                                if (n.disciplinas?.sigla) reprovadasNomes.push(n.disciplinas.sigla);
+                            }
+                        });
+
+                        const notasProcessadas = processGrades(notasBasicas, notasTecnicas, serieId);
+
+                        return {
+                            ra: aluno.ra,
+                            nome: aluno.nome,
+                            turma: mat?.turmas?.nome || '-',
+                            serie: mat?.turmas?.series?.nome || '-',
+                            qtdReprovadas,
+                            reprovadasTooltip: reprovadasNomes.join(', '),
+                            ...notasProcessadas
+                        };
+                    });
+                    setListaNotas(processed);
+                } catch (e) {
+                    console.error(e);
+                    alert("Erro ao carregar notas SEDUC: " + e.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                loadData();
+            }, [dbService]);
+
+            const exportCSV = () => {
+                if (listaNotas.length === 0) return;
+                const headers = [
+                    "RA", "Nome", "Turma", "Série", "Status", 
+                    "Língua Port.", "Arte", "Ed. Física", "Inglês", "Redação",
+                    "Física", "Química", "Biologia",
+                    "Matemática", "Mat. Aplicada",
+                    "História", "Geografia", "Sociologia", "Filosofia",
+                    "UCA", "Form. Técnica Profissional", "Média Final"
+                ];
+                const rows = listaNotas.map(r => [
+                    r.ra, r.nome, r.turma, r.serie,
+                    r.qtdReprovadas === 0 ? "APROVADO" : `REC: ${r.reprovadasTooltip}`, 
+                    r.lport, r.arte, r.edfis, r.ingles, r.red,
+                    r.fisica, r.quim, r.bio,
+                    r.mat, r.matApl,
+                    r.hist, r.geo, r.socio, r.filo,
+                    r.uca, r.formacaoTecnica, r.mediaFinal
+                ]);
+
+                const csvContent = [
+                    headers.join(";"),
+                    ...rows.map(r => r.map(f => `"${String(f).replace(/\./g, ',')}"`).join(";")) 
+                ].join("\n");
+
+                const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "Mapa_Notas_SEDUC.csv";
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const getNotaStyle = (valor) => {
+                if (valor === '-' || valor === undefined) return 'text-muted';
+                const num = parseFloat(valor);
+                if (isNaN(num)) return '';
+                return num < 6.0 ? 'text-danger fw-bold' : 'text-primary fw-bold';
+            };
+
+            return (
+                <div className="fade-in">
+                    <LoadingOverlay visible={loading} text="Calculando mapa detalhado SEDUC..." />
+                    
+                    <div className="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h3 className="fw-bold m-0" style={{color: 'var(--primary-color)'}}>Mapa de Notas SEDUC</h3>
+                            <small className="text-muted">Apenas alunos origem SEDUC (1ª e 3ª Série)</small>
+                        </div>
+                        <div className="d-flex gap-2">
+                            <button className="btn btn-outline-primary btn-sm" onClick={loadData}>
+                                <i className="fas fa-sync-alt me-1"></i> Atualizar
+                            </button>
+                            {listaNotas.length > 0 && (
+                                <button className="btn btn-success btn-sm shadow-sm" onClick={exportCSV}>
+                                    <i className="fas fa-file-csv me-1"></i> Exportar Excel
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="card module-card">
+                        <div className="card-body p-0">
+                            <div className="table-responsive">
+                                <table className="table table-hover table-bordered align-middle mb-0 table-sm" style={{fontSize: '0.75rem'}}>
+                                    <thead className="table-light text-center align-middle">
+                                        <tr>
+                                            <th rowSpan="2" className="py-2" style={{minWidth: '180px'}}>Aluno / Turma</th>
+                                            <th rowSpan="2" className="py-2" style={{minWidth: '80px'}}>Status</th>
+                                            <th colSpan="5" className="py-1 bg-light border-bottom">Linguagens</th>
+                                            <th colSpan="3" className="py-1 bg-light border-bottom">Ciências Nat.</th>
+                                            <th colSpan="2" className="py-1 bg-light border-bottom">Matemática</th>
+                                            <th colSpan="4" className="py-1 bg-light border-bottom">Ciências Hum.</th>
+                                            <th colSpan="2" className="py-1 bg-light border-bottom">Médias</th>
+                                            <th rowSpan="2" className="py-2 bg-light border-start text-primary">Média<br/>Linha</th>
+                                        </tr>
+                                        <tr>
+                                            <th title="Língua Portuguesa">L.Port</th>
+                                            <th title="Arte">Arte</th>
+                                            <th title="Educação Física">Ed.Fis</th>
+                                            <th title="Língua Inglesa">Inglês</th>
+                                            <th title="Redação">Red</th>
+                                            
+                                            <th title="Física">Fís</th>
+                                            <th title="Química">Quim</th>
+                                            <th title="Biologia">Bio</th>
+                                            
+                                            <th title="Matemática">Mat</th>
+                                            <th title="Matemática Aplicada">Mat.Apl</th>
+
+                                            <th title="História">Hist</th>
+                                            <th title="Geografia">Geo</th>
+                                            <th title="Sociologia">Soc</th>
+                                            <th title="Filosofia">Fil</th>
+                                            
+                                            <th title="Unidade Curricular de Aprofundamento">UCA</th>
+                                            <th title="Formação Técnica Profissional">Form.<br/>Téc.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {listaNotas.length === 0 && !loading ? (
+                                            <tr><td colSpan="19" className="text-center py-5 text-muted">Nenhum dado encontrado para os critérios.</td></tr>
+                                        ) : (
+                                            listaNotas.map(row => (
+                                                <tr key={row.ra}>
+                                                    <td className="ps-2">
+                                                        <div className="fw-bold text-dark text-truncate" style={{maxWidth:'150px'}} title={row.nome}>{row.nome}</div>
+                                                        <div className="text-muted small" style={{fontSize:'0.7rem'}}>RA: {row.ra} | {row.turma}</div>
+                                                    </td>
+
+                                                    <td className="text-center">
+                                                        {row.qtdReprovadas === 0 ? (
+                                                            <span className="badge bg-success bg-opacity-75 text-white border" style={{fontSize:'0.65rem'}}>
+                                                                APROV.
+                                                            </span>
+                                                        ) : (
+                                                            <span 
+                                                                className="badge bg-warning text-dark border" 
+                                                                style={{fontSize:'0.65rem', cursor:'help'}} 
+                                                                title={`Disciplinas: ${row.reprovadasTooltip}`}
+                                                            >
+                                                                REC. ({row.qtdReprovadas})
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    
+                                                    <td className={`text-center ${getNotaStyle(row.lport)}`}>{row.lport}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.arte)}`}>{row.arte}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.edfis)}`}>{row.edfis}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.ingles)}`}>{row.ingles}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.red)}`}>{row.red}</td>
+                                                    
+                                                    <td className={`text-center ${getNotaStyle(row.fisica)}`}>{row.fisica}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.quim)}`}>{row.quim}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.bio)}`}>{row.bio}</td>
+                                                    
+                                                    <td className={`text-center ${getNotaStyle(row.mat)}`}>{row.mat}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.matApl)}`}>{row.matApl}</td>
+                                                    
+                                                    <td className={`text-center ${getNotaStyle(row.hist)}`}>{row.hist}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.geo)}`}>{row.geo}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.socio)}`}>{row.socio}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.filo)}`}>{row.filo}</td>
+                                                    
+                                                    <td className={`text-center border-start ${getNotaStyle(row.uca)}`}>{row.uca}</td>
+                                                    <td className={`text-center ${getNotaStyle(row.formacaoTecnica)}`}>{row.formacaoTecnica}</td>
+                                                    
+                                                    <td className={`text-center fw-bold border-start bg-light ${getNotaStyle(row.mediaFinal)}`}>{row.mediaFinal}</td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const AlunosModule = ({ dbService }) => {
+            const [loading, setLoading] = useState(false);
+            const [groupedAlunos, setGroupedAlunos] = useState({});
+
+            const loadAlunos = async () => {
+                setLoading(true);
+                try {
+                    const data = await dbService.getAllActiveAlunos();
+                    const grouped = {};
+                    data.forEach(aluno => {
+                        const mat = aluno.matriculas[0];
+                        const serieObj = mat?.turmas?.series;
+                        const serieKey = serieObj ? `${serieObj.id}###${serieObj.nome}` : '0###Sem Série';
+                        
+                        if (!grouped[serieKey]) grouped[serieKey] = [];
+                        grouped[serieKey].push({
+                            ra: aluno.ra,
+                            nome: aluno.nome,
+                            email: aluno.email || '-',
+                            turma: mat?.turmas?.nome || '-',
+                            origem: aluno.tipo_origem
+                        });
+                    });
+                    setGroupedAlunos(grouped);
+                } catch (e) {
+                    console.error(e);
+                    alert('Erro ao carregar alunos.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                loadAlunos();
+            }, [dbService]);
+
+            const seriesKeys = Object.keys(groupedAlunos).sort();
+
+            return (
+                <div className="fade-in">
+                    <LoadingOverlay visible={loading} text="Carregando lista geral..." />
+                    <div className="d-flex justify-content-between align-items-center mb-4">
+                        <h3 className="fw-bold m-0" style={{color: 'var(--primary-color)'}}>Lista Geral de Alunos por Série</h3>
+                        <button className="btn btn-outline-primary btn-sm" onClick={loadAlunos}>
+                            <i className="fas fa-sync-alt me-1"></i> Atualizar
+                        </button>
+                    </div>
+
+                    {seriesKeys.length === 0 && !loading && (
+                        <div className="alert alert-warning">Nenhum aluno ativo encontrado.</div>
+                    )}
+
+                    {seriesKeys.map(key => {
+                        const [id, nomeSerie] = key.split('###');
+                        const alunosList = groupedAlunos[key];
+                        return (
+                            <div key={key} className="card module-card mb-4">
+                                <div className="card-header bg-white border-bottom py-3">
+                                    <h5 className="m-0 fw-bold text-secondary">
+                                        <i className="fas fa-layer-group me-2"></i>
+                                        {nomeSerie} <span className="badge bg-light text-dark ms-2 border">{alunosList.length} alunos</span>
+                                    </h5>
+                                </div>
+                                <div className="card-body p-0">
+                                    <div className="table-responsive">
+                                        <table className="table table-hover align-middle mb-0 table-sm">
+                                            <thead className="table-light">
+                                                <tr>
+                                                    <th className="ps-4">RA</th>
+                                                    <th>Nome</th>
+                                                    <th>Turma</th>
+                                                    <th>Origem</th>
+                                                    <th>Email</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {alunosList.map(aluno => (
+                                                    <tr key={aluno.ra}>
+                                                        <td className="ps-4 fw-bold text-muted small">{aluno.ra}</td>
+                                                        <td className="fw-bold text-dark">{aluno.nome}</td>
+                                                        <td><span className="badge bg-light text-dark border">{aluno.turma}</span></td>
+                                                        <td><span className={`badge rounded-pill ${aluno.origem === 'FMM' ? 'badge-fmm' : 'badge-seduc'}`}>{aluno.origem}</span></td>
+                                                        <td className="text-muted small">{aluno.email}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        };
+
+        const TurmasModule = ({ dbService }) => {
+            const [loading, setLoading] = useState(false);
+            const [turmas, setTurmas] = useState([]);
+
+            const loadTurmas = async () => {
+                setLoading(true);
+                try {
+                    const data = await dbService.getTurmasStats();
+                    setTurmas(data);
+                } catch (e) {
+                    console.error(e);
+                    alert('Erro ao carregar turmas: ' + e.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                loadTurmas();
+            }, [dbService]);
+
+            return (
+                <div className="fade-in">
+                    <LoadingOverlay visible={loading} text="Carregando turmas..." />
+                    <div className="d-flex justify-content-between align-items-center mb-4">
+                        <h3 className="fw-bold m-0" style={{color: 'var(--primary-color)'}}>Gestão de Turmas</h3>
+                        <button className="btn btn-outline-primary btn-sm" onClick={loadTurmas}>
+                            <i className="fas fa-sync-alt me-1"></i> Atualizar
+                        </button>
+                    </div>
+
+                    <div className="card module-card">
+                        <div className="card-body p-0">
+                            <div className="table-responsive">
+                                <table className="table table-hover align-middle mb-0">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th className="ps-4 py-3">Ano Letivo</th>
+                                            <th className="py-3">Série</th>
+                                            <th className="py-3">Turma</th>
+                                            <th className="py-3">Curso</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {turmas.length === 0 && !loading ? (
+                                            <tr><td colSpan="4" className="text-center py-5 text-muted">Nenhuma turma encontrada.</td></tr>
+                                        ) : (
+                                            turmas.map(t => (
+                                                <tr key={t.id}>
+                                                    <td className="ps-4 fw-bold text-secondary">{t.ano_letivo}</td>
+                                                    <td>{t.serie_nome}</td>
+                                                    <td className="fw-bold text-dark">{t.nome}</td>
+                                                    <td><span className="badge bg-light text-dark border">{t.curso_nome}</span></td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const HistoricosModule = ({ dbService, pdfGenerator }) => {
+            const [loading, setLoading] = useState(false);
+            const [loadingText, setLoadingText] = useState('Carregando...');
+            
+            // Estados para controle do Lote
+            const [batchStatus, setBatchStatus] = useState({ active: false, current: 0, total: 0, name: '' });
+            const abortControllerRef = React.useRef(null);
+
+            const [alunos, setAlunos] = useState([]);
+            const [filteredAlunos, setFilteredAlunos] = useState([]);
+            
+            const [selectedAno, setSelectedAno] = useState('');
+            const [selectedTurma, setSelectedTurma] = useState('');
+            const [selectedOrigem, setSelectedOrigem] = useState('TODOS');
+            const [selectedStatus, setSelectedStatus] = useState('TODOS');
+            
+            const [availableAnos, setAvailableAnos] = useState([]);
+            const [availableTurmas, setAvailableTurmas] = useState([]);
+
+            const handleBuscar = async () => {
+                const SERIE_FIXA_ID = 3; 
+                setLoading(true);
+                setLoadingText("Buscando dados da 3ª Série...");
+                try {
+                    const rawData = await dbService.getAlunosPorSerie(SERIE_FIXA_ID);
+                    const processed = rawData.map(aluno => {
+                        const mat = aluno.matriculas[0];
+                        const notas = mat?.anual_basica || [];
+                        const reprovas = notas.filter(n => n.mf !== null && Number(n.mf) < 6.0);
+                        return {
+                            ra: aluno.ra,
+                            nome: aluno.nome,
+                            turma: mat?.turmas?.nome || 'N/D',
+                            ano: mat?.turmas?.ano_letivo || 'N/D',
+                            origem: aluno.tipo_origem,
+                            qtdReprovadas: reprovas.length,
+                            reprovadasNomes: reprovas.map(r => r.disciplinas?.nome).join(', ')
+                        };
+                    });
+                    setAlunos(processed);
+                    const anosUnicos = [...new Set(processed.map(a => a.ano))].sort((a,b) => b-a);
+                    setAvailableAnos(anosUnicos);
+                    if (anosUnicos.length > 0) setSelectedAno(anosUnicos[0]);
+                    const turmasUnicas = [...new Set(processed.map(a => a.turma))].sort();
+                    setAvailableTurmas(turmasUnicas);
+                    setSelectedTurma(''); 
+                } catch (e) {
+                    console.error(e);
+                    alert("Erro ao buscar: " + e.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                let res = alunos;
+                if (selectedAno) res = res.filter(a => String(a.ano) === String(selectedAno));
+                if (selectedTurma) res = res.filter(a => a.turma === selectedTurma);
+                if (selectedOrigem !== 'TODOS') res = res.filter(a => a.origem === selectedOrigem);
+                if (selectedStatus === 'APROVADO') res = res.filter(a => a.qtdReprovadas === 0);
+                else if (selectedStatus === 'RECUPERACAO') res = res.filter(a => a.qtdReprovadas > 0);
+                setFilteredAlunos(res);
+            }, [alunos, selectedAno, selectedTurma, selectedStatus, selectedOrigem]);
+
+            const handleGerarPDF = async (ra, nome, turma, origem, action) => {
+                setLoading(true);
+                setLoadingText(action === 'save' ? `Baixando histórico de ${nome}...` : `Gerando visualização para ${nome}...`);
+                try {
+                    const dadosPessoais = await dbService.getDadosPessoais(ra);
+                    const historicoData = await dbService.getHistoricoCompleto(ra);
+                    await pdfGenerator.generate(nome, turma, origem, historicoData, dadosPessoais, action);
+                } catch (e) {
+                    console.error(e);
+                    alert("Erro PDF: " + e.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleGerarLote = async () => {
+                if (!selectedTurma) {
+                    alert("Por favor, selecione uma Turma específica nos filtros para gerar o lote.");
+                    return;
+                }
+                if (filteredAlunos.length === 0) {
+                    alert("Não há alunos listados para gerar o lote.");
+                    return;
+                }
+                
+                if (!confirm(`Deseja iniciar a geração do lote para a turma ${selectedTurma} (${filteredAlunos.length} alunos)?`)) {
+                    return;
+                }
+
+                abortControllerRef.current = new AbortController();
+                setBatchStatus({ active: true, current: 0, total: filteredAlunos.length, name: 'Iniciando...' });
+
+                try {
+                    await pdfGenerator.generateBatch(
+                        filteredAlunos, 
+                        selectedTurma, 
+                        dbService, 
+                        (atual, total, nomeAtual) => {
+                            setBatchStatus(prev => ({ ...prev, current: atual, total, name: nomeAtual }));
+                        },
+                        abortControllerRef.current.signal
+                    );
+                    alert("Lote gerado com sucesso!");
+                } catch (e) {
+                    if (e.message === 'CANCELLED') {
+                        alert("Operação cancelada pelo usuário.");
+                    } else {
+                        console.error(e);
+                        alert("Erro na geração em lote: " + e.message);
+                    }
+                } finally {
+                    setBatchStatus({ active: false, current: 0, total: 0, name: '' });
+                }
+            };
+
+            const cancelBatch = () => {
+                if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                }
+            };
+
+            const handleExportarLista = (type) => {
+                if (filteredAlunos.length === 0) return;
+                if (type === 'pdf') {
+                    pdfGenerator.generateList(filteredAlunos);
+                } else if (type === 'csv') {
+                    const headers = ["RA", "Nome do Aluno", "Ano", "Turma", "Origem", "Status Final"];
+                    const rows = filteredAlunos.map(a => [
+                        a.ra, a.nome, a.ano, a.turma, a.origem,
+                        a.qtdReprovadas === 0 ? "Aprovado" : `Recup. (${a.qtdReprovadas})`
+                    ]);
+                    const csvContent = [headers.join(";"), ...rows.map(row => row.map(f => `"${String(f).replace(/"/g, '""')}"`).join(";"))].join("\n");
+                    const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement("a");
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", "Lista_Alunos_Filtrada.csv");
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            };
+
+            return (
+                <div className="fade-in">
+                    <LoadingOverlay visible={loading} text={loadingText} />
+                    
+                    <BatchProgressOverlay 
+                        visible={batchStatus.active}
+                        current={batchStatus.current}
+                        total={batchStatus.total}
+                        currentName={batchStatus.name}
+                        onCancel={cancelBatch}
+                    />
+
+                    <h3 className="fw-bold mb-4" style={{color: 'var(--primary-color)'}}>Emissão de Históricos Escolares</h3>
+                    
+                    <div className="card module-card">
+                        <div className="module-header d-flex justify-content-between align-items-center">
+                            <div className="fw-bold">Filtros de Busca (3ª Série)</div>
+                            <button className="btn btn-outline-secondary btn-sm" onClick={() => window.location.reload()}>
+                                <i className="fas fa-sync-alt me-1"></i> Resetar
+                            </button>
+                        </div>
+                        
+                        <div className="card-body p-4">
+                            <div className="row g-3 mb-4 bg-light p-3 rounded border border-light">
+                                <div className="col-md-2">
+                                    <label className="form-label fw-bold small text-muted text-uppercase">1. Ano Letivo</label>
+                                    <select className="form-select form-select-sm" value={selectedAno} onChange={(e) => setSelectedAno(e.target.value)} disabled={availableAnos.length === 0}>
+                                        <option value="">Todos</option>
+                                        {availableAnos.map(a => <option key={a} value={a}>{a}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-md-2">
+                                    <label className="form-label fw-bold small text-muted text-uppercase">2. Turma</label>
+                                    <select className="form-select form-select-sm" value={selectedTurma} onChange={(e) => setSelectedTurma(e.target.value)} disabled={availableTurmas.length === 0}>
+                                        <option value="">Todas</option>
+                                        {availableTurmas.map(t => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-md-2">
+                                    <label className="form-label fw-bold small text-muted text-uppercase">3. Origem</label>
+                                    <select className="form-select form-select-sm" value={selectedOrigem} onChange={(e) => setSelectedOrigem(e.target.value)}>
+                                        <option value="TODOS">Todas</option>
+                                        <option value="FMM">FMM</option>
+                                        <option value="SEDUC">SEDUC</option>
+                                    </select>
+                                </div>
+                                <div className="col-md-3">
+                                    <label className="form-label fw-bold small text-muted text-uppercase">4. Status</label>
+                                    <select className="form-select form-select-sm" value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}>
+                                        <option value="TODOS">Todos</option>
+                                        <option value="APROVADO">Aprovados</option>
+                                        <option value="RECUPERACAO">Em Recuperação</option>
+                                    </select>
+                                </div>
+                                <div className="col-md-3 d-flex align-items-end">
+                                    <button className="btn btn-primary w-100 fw-bold btn-sm py-2" style={{ backgroundColor: 'var(--primary-color)' }} onClick={handleBuscar}>
+                                        <i className="fas fa-search me-2"></i> BUSCAR ALUNOS
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="d-flex justify-content-between align-items-center mb-3">
+                                <h6 className="text-muted fw-bold m-0">
+                                    {filteredAlunos.length > 0 ? `${filteredAlunos.length} registro(s) encontrado(s)` : 'Aguardando busca...'}
+                                </h6>
+                                
+                                {filteredAlunos.length > 0 && (
+                                    <div className="d-flex align-items-center gap-2">
+                                        {selectedTurma && (
+                                            <button 
+                                                className="btn btn-primary btn-sm fw-bold shadow-sm me-2"
+                                                onClick={handleGerarLote}
+                                                title="Gerar PDF único com todos os históricos"
+                                            >
+                                                <i className="fas fa-layer-group me-2"></i>
+                                                Gerar Lote (PDF)
+                                            </button>
+                                        )}
+
+                                        <span className="fw-bold small text-muted text-uppercase me-2 border-start ps-3">Lista Simples:</span>
+                                        <button className="btn btn-danger btn-sm shadow-sm" onClick={() => handleExportarLista('pdf')} title="Exportar Lista PDF">
+                                            <i className="fas fa-file-pdf"></i>
+                                        </button>
+                                        <button className="btn btn-success btn-sm shadow-sm" onClick={() => handleExportarLista('csv')} title="Exportar Lista CSV">
+                                            <i className="fas fa-file-csv"></i>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="table-responsive border rounded">
+                                <table className="table table-hover align-middle mb-0">
+                                    <thead className="table-light">
+                                        <tr>
+                                            <th className="text-center py-3">RA</th>
+                                            <th className="py-3">Nome do Aluno</th>
+                                            <th className="text-center py-3">Ano</th>
+                                            <th className="text-center py-3">Turma</th>
+                                            <th className="text-center py-3">Origem</th>
+                                            <th className="text-center py-3">Status</th>
+                                            <th className="text-center py-3">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredAlunos.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="7" className="text-center py-5 text-muted bg-white">
+                                                    <i className="fas fa-inbox fa-2x mb-3 d-block opacity-25"></i>
+                                                    {alunos.length === 0 ? "Utilize os filtros para buscar." : "Nenhum aluno encontrado."}
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            filteredAlunos.map(aluno => (
+                                                <tr key={aluno.ra}>
+                                                    <td className="text-center text-muted fw-bold">{aluno.ra}</td>
+                                                    <td className="fw-bold text-dark">{aluno.nome}</td>
+                                                    <td className="text-center"><span className="badge bg-light text-dark border">{aluno.ano}</span></td>
+                                                    <td className="text-center"><span className="badge bg-light text-dark border">{aluno.turma}</span></td>
+                                                    <td className="text-center">
+                                                        <span className={`badge rounded-pill ${aluno.origem === 'FMM' ? 'badge-fmm' : 'badge-seduc'}`}>
+                                                            {aluno.origem}
+                                                        </span>
+                                                    </td>
+                                                    <td className="text-center">
+                                                        {aluno.qtdReprovadas === 0 ? (
+                                                            <span className="badge bg-success bg-opacity-75 text-white"><i className="fas fa-check me-1"></i> Aprovado</span>
+                                                        ) : (
+                                                            <span className="badge bg-warning text-dark" title={aluno.reprovadasNomes}><i className="fas fa-exclamation-triangle me-1"></i> Recup. ({aluno.qtdReprovadas})</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="text-center">
+                                                        <div className="d-flex justify-content-center gap-2">
+                                                            <button className="btn btn-sm btn-outline-primary shadow-sm" title="Visualizar" onClick={() => handleGerarPDF(aluno.ra, aluno.nome, aluno.turma, aluno.origem, 'view')}>
+                                                                <i className="fas fa-eye"></i>
+                                                            </button>
+                                                            <button className="btn btn-sm btn-historico shadow-sm" title="Baixar PDF" onClick={() => handleGerarPDF(aluno.ra, aluno.nome, aluno.turma, aluno.origem, 'save')}>
+                                                                <i className="fas fa-download"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const MainApp = () => {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [isSidebarOpen, setSidebarOpen] = useState(true);
+            const dbService = useMemo(() => new DataService(), []);
+            const pdfGenerator = useMemo(() => new PDFGenerator(), []);
+
+            const renderContent = () => {
+                switch(activeTab) {
+                    case 'dashboard': return <DashboardView dbService={dbService} />;
+                    case 'historicos': return <HistoricosModule dbService={dbService} pdfGenerator={pdfGenerator} />;
+                    case 'alunos': return <AlunosModule dbService={dbService} />;
+                    case 'turmas': return <TurmasModule dbService={dbService} />; 
+                    case 'notas_seduc': return <NotasSeducModule dbService={dbService} />; 
+                    default: return <DashboardView dbService={dbService} />;
+                }
+            };
+
+            return (
+                <div className="wrapper">
+                    <Sidebar activeTab={activeTab} onTabChange={setActiveTab} isOpen={isSidebarOpen} />
+                    <div className={`main-content ${!isSidebarOpen ? 'expanded' : ''}`}>
+                        <Topbar onToggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+                        <div className="content-area">
+                            {renderContent()}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<MainApp />);
+    </script>
+
+</body>
+</html>
