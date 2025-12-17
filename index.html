@@ -144,6 +144,8 @@
             display: flex;
             align-items: center;
             gap: 10px;
+            cursor: pointer;
+            position: relative;
         }
 
         .user-avatar {
@@ -155,6 +157,49 @@
             align-items: center;
             justify-content: center;
             font-weight: bold;
+        }
+
+        .dropdown-menu-custom {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 10px;
+            background: white;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            min-width: 180px;
+            z-index: 1000;
+            display: none;
+        }
+        .dropdown-menu-custom.show { display: block; }
+        .dropdown-item-custom {
+            padding: 10px 15px;
+            display: block;
+            color: #333;
+            text-decoration: none;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+        .dropdown-item-custom:hover { background: #f8f9fa; }
+        .dropdown-item-custom.danger { color: #dc3545; }
+        .dropdown-item-custom.danger:hover { background: #fdf2f2; }
+
+        /* Login Screen */
+        .login-container {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        }
+        .login-card {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
         }
 
         /* Content Area */
@@ -202,6 +247,13 @@
             transition: all 0.2s;
         }
         .btn-historico:hover { background-color: var(--primary-color); color: white; border-color: var(--primary-color); }
+
+        /* Modal Overlay */
+        .modal-backdrop-custom {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 1050;
+            display: flex; align-items: center; justify-content: center;
+        }
     </style>
 </head>
 <body>
@@ -209,11 +261,8 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
-        // =================================================================================
-        // CONFIGURAÇÕES & SERVICES
-        // =================================================================================
         const CONFIG = {
             SUPABASE: {
                 URL: 'https://sikfohqafixxxfxtcrrq.supabase.co',
@@ -228,6 +277,47 @@
                 MECATRONICA: `Perfil Profissional de Conclusão\n\nO Técnico em Mecatrônica será habilitado para:\n\nProjetar, instalar e operar equipamentos automatizados e/ou robotizados empregados em processos de manufatura considerando as normas,\nos padrões e os requisitos técnicos de qualidade, saúde e segurança e de meio ambiente.\nRealizar programação, parametrização, medições e testes de equipamentos automatizados em processos de manufatura.\nRealizar integração de equipamentos mecânicos e eletrônicos utilizados em processos de manufatura.\nReconhecer tecnologias inovadoras presentes no segmento visando a atender às transformações digitais na sociedade.\n\nPara atuação como Técnico em Mecatrônica, são fundamentais:\n\nConhecimentos e saberes relacionados ao planejamento e implementação de processos automatizados de manufatura de modo a assegurar a saúde e a segurança\ndos trabalhadores e dos usuários.\nConhecimento e saberes relacionados à sustentabilidade do processo produtivo, às técnicas e processos de produção, às normas técnicas, à liderança de equipes,\nà solução de problemas técnicos e trabalhistas e à gestão de conflitos.\n\nObservações:\nEducação Profissional Técnica concomitante ao Ensino Médio.\nO (a) aluno(a) cumpriu a carga horária exigida para o estágio obrigatório.\nA Resolução Nº 150/2017 CEE/AM altera a denominação da Fundação Nokia de Ensino para Fundação Matias Machline.\nMédia para aprovação: 6.0(seis).`
             }
         };
+
+        // =================================================================================
+        // SERVICES
+        // =================================================================================
+        
+        class AuthService {
+            constructor() {
+                this.client = supabase.createClient(CONFIG.SUPABASE.URL, CONFIG.SUPABASE.KEY);
+            }
+
+            async login(email, password) {
+                const { data, error } = await this.client.auth.signInWithPassword({ email, password });
+                if (error) throw error;
+                return data;
+            }
+
+            async logout() {
+                const { error } = await this.client.auth.signOut();
+                if (error) throw error;
+            }
+
+            async updatePassword(currentPassword, newPassword) {
+                // Para garantir segurança, reautenticamos antes de trocar
+                const email = (await this.client.auth.getUser()).data.user.email;
+                const { error: loginError } = await this.client.auth.signInWithPassword({ email, password: currentPassword });
+                
+                if (loginError) throw new Error("Senha atual incorreta.");
+
+                const { error } = await this.client.auth.updateUser({ password: newPassword });
+                if (error) throw error;
+            }
+
+            async getCurrentUser() {
+                const { data } = await this.client.auth.getUser();
+                return data.user;
+            }
+
+            onAuthStateChange(callback) {
+                return this.client.auth.onAuthStateChange(callback);
+            }
+        }
 
         class DataService {
             constructor() {
@@ -262,7 +352,7 @@
                         ra, nome, email, tipo_origem, status_matricula,
                         matriculas!inner (
                             id,
-                            turmas!inner ( nome, series!inner(id, nome), ano_letivo )
+                            turmas!inner ( nome, series!inner(id), ano_letivo )
                         )
                     `)
                     .eq('status_matricula', 'CURSANDO')
@@ -270,9 +360,7 @@
                 if (error) throw error;
                 return data;
             }
-            // ATUALIZADO: Busca e mescla dados atuais (matriculas) e de arquivo (2023, 2024)
             async getHistoricoCompleto(ra) {
-                // 1. Dados Atuais (2025 - matriculas)
                 const p1 = this.client
                     .from('matriculas')
                     .select(`
@@ -284,23 +372,15 @@
                     .eq('aluno_ra', ra)
                     .order('turmas(ano_letivo)', { ascending: true });
 
-                // 2. Dados Arquivados 2023 (1ª Série)
                 const p2Bas = this.client.from('notas_basica_2023').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
                 const p2Tec = this.client.from('notas_tecnica_2023').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
-
-                // 3. Dados Arquivados 2024 (2ª Série)
                 const p3Bas = this.client.from('notas_basica_2024').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
                 const p3Tec = this.client.from('notas_tecnica_2024').select('*, disciplinas(nome, carga_horaria, area)').eq('aluno_ra', ra);
 
-                const [
-                    { data: currentData, error: err1 },
-                    { data: bas23, error: err2 }, { data: tec23, error: err3 },
-                    { data: bas24, error: err4 }, { data: tec24, error: err5 }
-                ] = await Promise.all([p1, p2Bas, p2Tec, p3Bas, p3Tec]);
+                const [{ data: currentData, error: err1 }, { data: bas23 }, { data: tec23 }, { data: bas24 }, { data: tec24 }] = await Promise.all([p1, p2Bas, p2Tec, p3Bas, p3Tec]);
 
                 if (err1) throw err1;
 
-                // Normalização dos dados de arquivo para o formato esperado pelo PDFGenerator
                 const createArchivedEntry = (ano, serieId, nomeTurma, basicas, tecnicas) => {
                     if ((!basicas || basicas.length === 0) && (!tecnicas || tecnicas.length === 0)) return null;
                     return {
@@ -316,11 +396,8 @@
                     };
                 };
 
-                const nomeTurma23 = bas23?.[0]?.nome_turma_origem || tec23?.[0]?.nome_turma_origem || '';
-                const nomeTurma24 = bas24?.[0]?.nome_turma_origem || tec24?.[0]?.nome_turma_origem || '';
-
-                const entry2023 = createArchivedEntry(2023, 1, nomeTurma23, bas23, tec23);
-                const entry2024 = createArchivedEntry(2024, 2, nomeTurma24, bas24, tec24);
+                const entry2023 = createArchivedEntry(2023, 1, bas23?.[0]?.nome_turma_origem, bas23, tec23);
+                const entry2024 = createArchivedEntry(2024, 2, bas24?.[0]?.nome_turma_origem, bas24, tec24);
 
                 const finalData = [];
                 if (entry2023) finalData.push(entry2023);
@@ -341,55 +418,25 @@
             async getTurmasStats() {
                 const { data: turmas, error: errTurmas } = await this.client
                     .from('turmas')
-                    .select(`
-                        id, nome, ano_letivo,
-                        series ( nome ),
-                        cursos ( nome )
-                    `)
-                    .order('ano_letivo', { ascending: false })
-                    .order('nome', { ascending: true });
-                
+                    .select(`id, nome, ano_letivo, series ( nome ), cursos ( nome )`)
+                    .order('ano_letivo', { ascending: false }).order('nome', { ascending: true });
                 if (errTurmas) throw errTurmas;
-
                 return turmas.map(t => ({
-                    id: t.id,
-                    nome: t.nome,
-                    ano_letivo: t.ano_letivo,
-                    serie_nome: t.series?.nome || '-',
-                    curso_nome: t.cursos?.nome || 'Geral'
+                    id: t.id, nome: t.nome, ano_letivo: t.ano_letivo,
+                    serie_nome: t.series?.nome || '-', curso_nome: t.cursos?.nome || 'Geral'
                 }));
             }
             async getNotasSeduc() {
                 const ANO_ATUAL = 2025; 
-
                 const { data, error } = await this.client
                     .from('alunos')
                     .select(`
                         ra, nome, tipo_origem,
-                        matriculas!inner (
-                            id,
-                            turmas!inner (
-                                nome,
-                                series!inner ( id, nome ),
-                                ano_letivo
-                            ),
-                            anual_basica (
-                                mf,
-                                disciplinas ( sigla )
-                            ),
-                            notas_tecnica (
-                                ns,
-                                disciplinas ( sigla )
-                            )
-                        )
+                        matriculas!inner ( id, turmas!inner ( nome, series!inner ( id, nome ), ano_letivo ), anual_basica ( mf, disciplinas ( sigla ) ), notas_tecnica ( ns, disciplinas ( sigla ) ) )
                     `)
-                    .eq('tipo_origem', 'SEDUC')
-                    .eq('status_matricula', 'CURSANDO')
-                    .eq('matriculas.turmas.ano_letivo', ANO_ATUAL)
+                    .eq('tipo_origem', 'SEDUC').eq('status_matricula', 'CURSANDO').eq('matriculas.turmas.ano_letivo', ANO_ATUAL)
                     .order('nome');
-
                 if (error) throw error;
-
                 return data.filter(aluno => {
                     const serieId = aluno.matriculas[0]?.turmas?.series?.id;
                     return serieId === 1 || serieId === 3;
@@ -397,44 +444,20 @@
             }
             async getDashboardStats() {
                 const currentYear = new Date().getFullYear();
-                const { count: totalAlunos, error: errAlunos } = await this.client
-                    .from('alunos')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('status_matricula', 'CURSANDO');
+                const { count: totalAlunos, error: errAlunos } = await this.client.from('alunos').select('*', { count: 'exact', head: true }).eq('status_matricula', 'CURSANDO');
                 if (errAlunos) throw errAlunos;
-
-                const { count: totalTurmas, error: errTurmas } = await this.client
-                    .from('turmas')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('ano_letivo', currentYear);
+                const { count: totalTurmas, error: errTurmas } = await this.client.from('turmas').select('*', { count: 'exact', head: true }).eq('ano_letivo', currentYear);
                 if (errTurmas) throw errTurmas;
-
-                const { data: matriculas, error: errMat } = await this.client
-                    .from('matriculas')
-                    .select(`
-                        id,
-                        anual_basica ( mf ),
-                        alunos!inner ( status_matricula )
-                    `)
-                    .eq('alunos.status_matricula', 'CURSANDO');
-                
+                const { data: matriculas, error: errMat } = await this.client.from('matriculas').select(`id, anual_basica ( mf ), alunos!inner ( status_matricula )`).eq('alunos.status_matricula', 'CURSANDO');
                 if (errMat) throw errMat;
-
                 let countRecuperacao = 0;
                 matriculas.forEach(m => {
                     const notas = m.anual_basica || [];
                     const temReprovacao = notas.some(n => n.mf !== null && Number(n.mf) < 6.0);
                     if (temReprovacao) countRecuperacao++;
                 });
-
                 const countAprovados = matriculas.length - countRecuperacao; 
-
-                return {
-                    alunos: totalAlunos,
-                    turmas: totalTurmas,
-                    aprovados: countAprovados,
-                    recuperacao: countRecuperacao
-                };
+                return { alunos: totalAlunos, turmas: totalTurmas, aprovados: countAprovados, recuperacao: countRecuperacao };
             }
         }
 
@@ -450,8 +473,6 @@
                 const { dadosTabela, totalCH, dadosTrajetoria } = this._processData(historicoData, origem);
 
                 doc.setProperties({ title: `${alunoNome} - ${turma}`, author: 'Fundação Matias Machline' });
-
-                // Renderiza as páginas
                 this._appendStudentPages(doc, imgLogo, alunoNome, turma, origem, historicoData, dadosPessoais);
 
                 const safeNome = alunoNome.replace(/[^a-z0-9à-ú\s-]/gi, '_').trim();
@@ -465,28 +486,19 @@
             async generateBatch(alunosList, turma, dbService, onProgress, signal) {
                 const doc = new this.jsPDF('p', 'mm', 'a4');
                 const imgLogo = await this._loadLogo();
-                
                 doc.setProperties({ title: `Lote Históricos - ${turma}`, author: 'Fundação Matias Machline' });
 
                 for (let i = 0; i < alunosList.length; i++) {
-                    if (signal && signal.aborted) {
-                        throw new Error('CANCELLED');
-                    }
-
+                    if (signal && signal.aborted) throw new Error('CANCELLED');
                     const aluno = alunosList[i];
                     if (onProgress) onProgress(i + 1, alunosList.length, aluno.nome);
-
                     try {
                         const dadosPessoais = await dbService.getDadosPessoais(aluno.ra);
                         const historicoData = await dbService.getHistoricoCompleto(aluno.ra);
-
                         if (i > 0) doc.addPage();
                         this._appendStudentPages(doc, imgLogo, aluno.nome, aluno.turma, aluno.origem, historicoData, dadosPessoais);
-                    } catch (error) {
-                        console.error(`Erro ao processar aluno ${aluno.nome}:`, error);
-                    }
+                    } catch (error) { console.error(`Erro ao processar aluno ${aluno.nome}:`, error); }
                 }
-
                 const safeTurma = turma.replace(/[^a-z0-9à-ú\s-]/gi, '_').trim();
                 doc.save(`Historicos_Lote_${safeTurma}.pdf`);
             }
@@ -495,11 +507,9 @@
                 const pageWidth = doc.internal.pageSize.getWidth();
                 const nomeCurso = this._extractCurso(historicoData);
                 const { dadosTabela, totalCH, dadosTrajetoria } = this._processData(historicoData, origem);
-
                 let finalY = this._drawHeader(doc, pageWidth, imgLogo, alunoNome, dadosPessoais);
                 finalY = this._drawGradesTable(doc, finalY, dadosTabela, totalCH);
                 this._drawTrajectoryTable(doc, finalY, dadosTrajetoria);
-                
                 doc.addPage();
                 finalY = this._drawHeader(doc, pageWidth, imgLogo, alunoNome, dadosPessoais);
                 finalY = this._drawProfile(doc, finalY, nomeCurso);
@@ -540,7 +550,6 @@
                         const disc = n.disciplinas?.nome?.toUpperCase() || 'S/N';
                         const ch = n.disciplinas?.carga_horaria || 80;
                         const val = tipo === 'B' ? n.mf : n.ns;
-                        // Adiciona propriedade 'type' para ordenação
                         if (!historico[disc]) historico[disc] = { type: tipo, 1: {n:'-',c:0}, 2: {n:'-',c:0}, 3: {n:'-',c:0} };
                         if (serie >= 1 && serie <= 3) {
                             historico[disc][serie] = { n: val !== null ? String(val).replace('.',',') : '-', c: ch };
@@ -550,7 +559,6 @@
                     notasT.forEach(n => processar(n, 'T'));
                 });
 
-                // Ordenação: Básicas primeiro, depois Técnicas (alfabético dentro dos grupos)
                 const dadosTabela = Object.keys(historico).sort((a, b) => {
                     if (historico[a].type !== historico[b].type) {
                         return historico[a].type === 'B' ? -1 : 1;
@@ -589,7 +597,7 @@
                 doc.text("HISTÓRICO ESCOLAR - ENSINO MÉDIO", pw/2, 42, {align: "center"});
                 
                 const yStart = 48;
-                const hRow = 4; 
+                const hRow = 4;
                 const fontSizeData = 7; 
                 const d = dados || {};
                 
@@ -621,7 +629,7 @@
             }
             _drawGradesTable(doc, startY, body, totalCH) {
                 doc.autoTable({
-                    startY: startY + 2, // Reduzido de 5 para 2 (Aproxima do cabeçalho)
+                    startY: startY + 2, 
                     margin: { left: 10 }, tableWidth: 190,
                     head: [
                         [{ content: 'Componente Curricular', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
@@ -642,7 +650,7 @@
             }
             _drawTrajectoryTable(doc, startY, body) {
                 doc.autoTable({
-                    startY: startY + 2, // Reduzido de 5 para 2 (Aproxima da tabela de notas)
+                    startY: startY + 2,
                     margin: { left: 10 }, tableWidth: 190,
                     head: [['Ano', 'Série', 'Estabelecimento', 'Cidade', 'UF', 'Resultado']],
                     body: body.length ? body : [['-', '-', 'NENHUM REGISTRO', '-', '-', '-']],
@@ -656,7 +664,7 @@
             _drawProfile(doc, startY, nomeCurso) {
                 const txt = nomeCurso.includes("INFORMÁTICA") ? CONFIG.PERFIL_TEXTOS.INFORMATICA : CONFIG.PERFIL_TEXTOS.MECATRONICA;
                 doc.autoTable({
-                    startY: startY + 2, // Reduzido de 5 para 2 (Aproxima do cabeçalho na pág 2)
+                    startY: startY + 2, 
                     margin: { left: 10 }, tableWidth: 190,
                     head: [[`Perfil Profissional: ${nomeCurso}`]],
                     body: [[txt]],
@@ -677,24 +685,6 @@
                 doc.text("Secretário(a)", 50, y + 5, { align: "center" });
                 doc.text("Diretor(a)", 160, y + 5, { align: "center" });
             }
-            generateList(alunos) {
-                const doc = new this.jsPDF('p', 'mm', 'a4');
-                const pageWidth = doc.internal.pageSize.getWidth();
-                doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(0, 0, 0);
-                doc.text("Relatório de Alunos Filtrados", pageWidth / 2, 15, { align: "center" });
-                doc.setFontSize(9); doc.setFont("helvetica", "normal");
-                doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, pageWidth / 2, 22, { align: "center" });
-                const columns = ["RA", "Nome do Aluno", "Ano", "Turma", "Origem", "Status Final"];
-                const rows = alunos.map(a => [a.ra, a.nome, a.ano, a.turma, a.origem, a.qtdReprovadas === 0 ? "Aprovado" : `Recup. (${a.qtdReprovadas})`]);
-                doc.autoTable({
-                    head: [columns], body: rows, startY: 30, theme: 'grid',
-                    headStyles: { fillColor: [0, 51, 102], textColor: 255, fontStyle: 'bold', halign: 'center' },
-                    styles: { font: 'helvetica', fontSize: 8, cellPadding: 3, halign: 'center', lineColor: [200, 200, 200], lineWidth: 0.1 },
-                    columnStyles: { 1: { halign: 'left' } },
-                    alternateRowStyles: { fillColor: [248, 249, 250] }
-                });
-                doc.save("Lista_Alunos_Filtrada.pdf");
-            }
         }
 
         // =================================================================================
@@ -713,9 +703,7 @@
 
         const BatchProgressOverlay = ({ visible, current, total, currentName, onCancel }) => {
             if (!visible) return null;
-            
             const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
-
             return (
                 <div className="loading-overlay" style={{zIndex: 2000}}>
                     <div className="card shadow-lg p-4 bg-white rounded-3 border-0" style={{width: '90%', maxWidth: '450px'}}>
@@ -723,31 +711,106 @@
                             <div className="spinner-logo mx-auto mb-3" style={{width:'40px', height:'40px', borderWidth:'3px'}}></div>
                             <h5 className="fw-bold" style={{color: 'var(--primary-color)'}}>Gerando Lote de Históricos</h5>
                         </div>
-
                         <div className="progress mb-2" style={{height: '25px', fontSize: '0.9rem'}}>
-                            <div 
-                                className="progress-bar progress-bar-striped progress-bar-animated bg-success" 
-                                role="progressbar" 
-                                style={{width: `${percentage}%`}}
-                            >
-                                {percentage}%
+                            <div className="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style={{width: `${percentage}%`}}>{percentage}%</div>
+                        </div>
+                        <div className="d-flex justify-content-between text-muted small mb-3"><span>Progresso:</span><span>{current} de {total}</span></div>
+                        <div className="alert alert-light border text-center mb-4 py-2"><small className="text-muted d-block mb-1">Processando:</small><div className="fw-bold text-dark text-truncate">{currentName || 'Inicializando...'}</div></div>
+                        <button className="btn btn-outline-danger w-100 fw-bold" onClick={onCancel}><i className="fas fa-times-circle me-2"></i>Cancelar Operação</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // MODAL DE ALTERAR SENHA
+        const ChangePasswordModal = ({ isOpen, onClose, authService }) => {
+            if (!isOpen) return null;
+            const [currentPass, setCurrentPass] = useState('');
+            const [newPass, setNewPass] = useState('');
+            const [confirmPass, setConfirmPass] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (newPass !== confirmPass) return alert("As novas senhas não coincidem!");
+                setLoading(true);
+                try {
+                    await authService.updatePassword(currentPass, newPass);
+                    alert("Senha alterada com sucesso!");
+                    onClose();
+                } catch (e) {
+                    alert("Erro: " + e.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="modal-backdrop-custom">
+                    <div className="card p-4" style={{width: '400px'}}>
+                        <h5 className="mb-3">Alterar Senha</h5>
+                        <form onSubmit={handleSubmit}>
+                            <div className="mb-3">
+                                <label className="form-label">Senha Atual</label>
+                                <input type="password" class="form-control" required value={currentPass} onChange={e=>setCurrentPass(e.target.value)} />
                             </div>
-                        </div>
+                            <div className="mb-3">
+                                <label className="form-label">Nova Senha</label>
+                                <input type="password" class="form-control" required value={newPass} onChange={e=>setNewPass(e.target.value)} />
+                            </div>
+                            <div className="mb-3">
+                                <label className="form-label">Confirmar Nova Senha</label>
+                                <input type="password" class="form-control" required value={confirmPass} onChange={e=>setConfirmPass(e.target.value)} />
+                            </div>
+                            <div className="d-flex justify-content-end gap-2">
+                                <button type="button" className="btn btn-secondary" onClick={onClose}>Cancelar</button>
+                                <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Salvando...' : 'Salvar'}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
 
-                        <div className="d-flex justify-content-between text-muted small mb-3">
-                            <span>Progresso:</span>
-                            <span>{current} de {total}</span>
-                        </div>
+        // LOGIN SCREEN
+        const LoginView = ({ authService }) => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loading, setLoading] = useState(false);
 
-                        <div className="alert alert-light border text-center mb-4 py-2">
-                            <small className="text-muted d-block mb-1">Gerando arquivo de:</small>
-                            <div className="fw-bold text-dark text-truncate">{currentName || 'Inicializando...'}</div>
-                        </div>
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                try {
+                    await authService.login(email, password);
+                } catch (e) {
+                    alert("Erro no login: " + e.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
 
-                        <button className="btn btn-outline-danger w-100 fw-bold" onClick={onCancel}>
-                            <i className="fas fa-times-circle me-2"></i>
-                            Cancelar Operação
-                        </button>
+            return (
+                <div className="login-container">
+                    <div className="login-card">
+                        <div className="text-center mb-4">
+                            <div className="spinner-logo mx-auto mb-3" style={{width:'60px', height:'60px', borderWidth:'4px'}}></div>
+                            <h4 className="fw-bold" style={{color: 'var(--primary-color)'}}>Sistema Secretaria FMM</h4>
+                            <p className="text-muted small">Acesso Restrito</p>
+                        </div>
+                        <form onSubmit={handleLogin}>
+                            <div className="mb-3">
+                                <label className="form-label">Email</label>
+                                <input type="email" className="form-control" required value={email} onChange={e=>setEmail(e.target.value)} />
+                            </div>
+                            <div className="mb-4">
+                                <label className="form-label">Senha</label>
+                                <input type="password" className="form-control" required value={password} onChange={e=>setPassword(e.target.value)} />
+                            </div>
+                            <button type="submit" className="btn btn-primary w-100 py-2 fw-bold" disabled={loading}>
+                                {loading ? 'Entrando...' : 'Entrar'}
+                            </button>
+                        </form>
                     </div>
                 </div>
             );
@@ -756,81 +819,61 @@
         const Sidebar = ({ activeTab, onTabChange, isOpen }) => {
             return (
                 <nav className={`sidebar ${!isOpen ? 'closed' : ''}`}>
-                    <div className="sidebar-brand">
-                        <i className="fas fa-university"></i>
-                        <span>SECRETARIA FMM</span>
-                    </div>
+                    <div className="sidebar-brand"><i className="fas fa-university"></i><span>SECRETARIA FMM</span></div>
                     <ul className="nav-links">
-                        <li className="nav-item">
-                            <a 
-                                className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`}
-                                onClick={() => onTabChange('dashboard')}
-                            >
-                                <i className="fas fa-chart-pie"></i>
-                                <span>Dashboard</span>
-                            </a>
-                        </li>
-                        <li className="nav-item">
-                            <a 
-                                className={`nav-link ${activeTab === 'alunos' ? 'active' : ''}`}
-                                onClick={() => onTabChange('alunos')}
-                            >
-                                <i className="fas fa-user-graduate"></i>
-                                <span>Alunos</span>
-                            </a>
-                        </li>
-                        <li className="nav-item">
-                            <a 
-                                className={`nav-link ${activeTab === 'turmas' ? 'active' : ''}`}
-                                onClick={() => onTabChange('turmas')}
-                            >
-                                <i className="fas fa-users"></i>
-                                <span>Turmas</span>
-                            </a>
-                        </li>
-                        <li className="nav-item">
-                            <a 
-                                className={`nav-link ${activeTab === 'notas_seduc' ? 'active' : ''}`}
-                                onClick={() => onTabChange('notas_seduc')}
-                            >
-                                <i className="fas fa-calculator"></i>
-                                <span>Notas Seduc</span>
-                            </a>
-                        </li>
+                        <li className="nav-item"><a className={`nav-link ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => onTabChange('dashboard')}><i className="fas fa-chart-pie"></i><span>Dashboard</span></a></li>
+                        <li className="nav-item"><a className={`nav-link ${activeTab === 'alunos' ? 'active' : ''}`} onClick={() => onTabChange('alunos')}><i className="fas fa-user-graduate"></i><span>Alunos</span></a></li>
+                        <li className="nav-item"><a className={`nav-link ${activeTab === 'turmas' ? 'active' : ''}`} onClick={() => onTabChange('turmas')}><i className="fas fa-users"></i><span>Turmas</span></a></li>
+                        <li className="nav-item"><a className={`nav-link ${activeTab === 'notas_seduc' ? 'active' : ''}`} onClick={() => onTabChange('notas_seduc')}><i className="fas fa-calculator"></i><span>Notas Seduc</span></a></li>
                         <div className="my-2 border-top border-secondary opacity-25"></div>
-                        <li className="nav-item">
-                            <a 
-                                className={`nav-link ${activeTab === 'historicos' ? 'active' : ''}`}
-                                onClick={() => onTabChange('historicos')}
-                            >
-                                <i className="fas fa-file-signature"></i>
-                                <span>Emissão Históricos</span>
-                            </a>
-                        </li>
+                        <li className="nav-item"><a className={`nav-link ${activeTab === 'historicos' ? 'active' : ''}`} onClick={() => onTabChange('historicos')}><i className="fas fa-file-signature"></i><span>Emissão Históricos</span></a></li>
                     </ul>
-                    <div className="p-3 mt-auto">
-                        <small className="d-block text-white-50">Versão 2.6.0</small>
-                    </div>
+                    <div className="p-3 mt-auto"><small className="d-block text-white-50">Versão 3.2.0 (Auth)</small></div>
                 </nav>
             );
         };
 
-        const Topbar = ({ onToggleSidebar }) => {
+        const Topbar = ({ onToggleSidebar, authService }) => {
+            const [showDropdown, setShowDropdown] = useState(false);
+            const [showPasswordModal, setShowPasswordModal] = useState(false);
+            const dropdownRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+                        setShowDropdown(false);
+                    }
+                };
+                document.addEventListener("mousedown", handleClickOutside);
+                return () => document.removeEventListener("mousedown", handleClickOutside);
+            }, []);
+
+            const handleLogout = async () => {
+                try { await authService.logout(); } catch(e) { console.error(e); }
+            };
+
             return (
                 <header className="topbar">
+                    <ChangePasswordModal isOpen={showPasswordModal} onClose={()=>setShowPasswordModal(false)} authService={authService} />
                     <div className="d-flex align-items-center gap-3">
-                        <button className="btn btn-link text-secondary p-0" onClick={onToggleSidebar}>
-                            <i className="fas fa-bars fa-lg"></i>
-                        </button>
+                        <button className="btn btn-link text-secondary p-0" onClick={onToggleSidebar}><i className="fas fa-bars fa-lg"></i></button>
                         <h5 className="m-0 fw-bold text-secondary">Painel Administrativo</h5>
                     </div>
-                    <div className="user-profile">
+                    <div className="user-profile" onClick={() => setShowDropdown(!showDropdown)} ref={dropdownRef}>
                         <div className="text-end me-2 d-none d-sm-block">
-                            <div className="fw-bold small">Secretaria Geral</div>
+                            <div className="fw-bold small">Usuário</div>
                             <div className="text-muted small" style={{fontSize: '0.75rem'}}>Admin</div>
                         </div>
-                        <div className="user-avatar">
-                            SG
+                        <div className="user-avatar">SG</div>
+                        
+                        {/* Dropdown */}
+                        <div className={`dropdown-menu-custom ${showDropdown ? 'show' : ''}`}>
+                            <div className="dropdown-item-custom" onClick={(e) => { e.stopPropagation(); setShowPasswordModal(true); setShowDropdown(false); }}>
+                                <i className="fas fa-key me-2"></i> Alterar Senha
+                            </div>
+                            <div className="dropdown-item-custom danger" onClick={(e) => { e.stopPropagation(); handleLogout(); }}>
+                                <i className="fas fa-sign-out-alt me-2"></i> Sair
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -840,64 +883,21 @@
         const DashboardView = ({ dbService }) => {
             const [stats, setStats] = useState({ alunos: 0, turmas: 0, aprovados: 0, recuperacao: 0 });
             const [loading, setLoading] = useState(true);
-
             useEffect(() => {
-                const loadStats = async () => {
-                    try {
-                        const data = await dbService.getDashboardStats();
-                        setStats(data);
-                    } catch (e) {
-                        console.error("Erro ao carregar dashboard:", e);
-                    } finally {
-                        setLoading(false);
-                    }
-                };
+                const loadStats = async () => { try { const data = await dbService.getDashboardStats(); setStats(data); } catch (e) { console.error("Erro ao carregar dashboard:", e); } finally { setLoading(false); } };
                 loadStats();
             }, [dbService]);
-
-            if (loading) {
-                return (
-                    <div className="d-flex justify-content-center align-items-center" style={{height: '300px'}}>
-                        <div className="spinner-border text-primary" role="status">
-                            <span className="visually-hidden">Carregando...</span>
-                        </div>
-                    </div>
-                );
-            }
-
+            if (loading) return (<div className="d-flex justify-content-center align-items-center" style={{height: '300px'}}><div className="spinner-border text-primary" role="status"><span className="visually-hidden">Carregando...</span></div></div>);
             return (
                 <div className="fade-in">
                     <h3 className="fw-bold mb-4" style={{color: 'var(--primary-color)'}}>Visão Geral</h3>
                     <div className="row g-4 mb-4">
-                        <div className="col-md-3">
-                            <div className="stats-card">
-                                <div className="stats-label">Total Alunos Cursando</div>
-                                <div className="stats-value">{stats.alunos}</div>
-                            </div>
-                        </div>
-                        <div className="col-md-3">
-                            <div className="stats-card" style={{borderLeftColor: '#2e7d32'}}>
-                                <div className="stats-label">Turmas ({new Date().getFullYear()})</div>
-                                <div className="stats-value">{stats.turmas}</div>
-                            </div>
-                        </div>
-                        <div className="col-md-3">
-                            <div className="stats-card" style={{borderLeftColor: '#0d6efd'}}>
-                                <div className="stats-label">Alunos Aprovados</div>
-                                <div className="stats-value">{stats.aprovados}</div>
-                            </div>
-                        </div>
-                        <div className="col-md-3">
-                            <div className="stats-card" style={{borderLeftColor: '#ef4444'}}>
-                                <div className="stats-label">Em Recuperação</div>
-                                <div className="stats-value">{stats.recuperacao}</div>
-                            </div>
-                        </div>
+                        <div className="col-md-3"><div className="stats-card"><div className="stats-label">Total Alunos Cursando</div><div className="stats-value">{stats.alunos}</div></div></div>
+                        <div className="col-md-3"><div className="stats-card" style={{borderLeftColor: '#2e7d32'}}><div className="stats-label">Turmas ({new Date().getFullYear()})</div><div className="stats-value">{stats.turmas}</div></div></div>
+                        <div className="col-md-3"><div className="stats-card" style={{borderLeftColor: '#0d6efd'}}><div className="stats-label">Alunos Aprovados</div><div className="stats-value">{stats.aprovados}</div></div></div>
+                        <div className="col-md-3"><div className="stats-card" style={{borderLeftColor: '#ef4444'}}><div className="stats-label">Em Recuperação</div><div className="stats-value">{stats.recuperacao}</div></div></div>
                     </div>
-                    <div className="alert alert-info border-0 shadow-sm">
-                        <i className="fas fa-info-circle me-2"></i>
-                        Bem-vindo ao novo módulo de Gestão Acadêmica. Selecione uma opção no menu lateral para começar.
-                    </div>
+                    <div className="alert alert-info border-0 shadow-sm"><i className="fas fa-info-circle me-2"></i>Bem-vindo ao novo módulo de Gestão Acadêmica. Selecione uma opção no menu lateral para começar.</div>
                 </div>
             );
         };
@@ -1121,24 +1121,29 @@
                                             <th rowSpan="2" className="py-2 bg-light border-start text-primary">Média<br/>Linha</th>
                                         </tr>
                                         <tr>
+                                            {/* Linguagens */}
                                             <th title="Língua Portuguesa">L.Port</th>
                                             <th title="Arte">Arte</th>
                                             <th title="Educação Física">Ed.Fis</th>
                                             <th title="Língua Inglesa">Inglês</th>
                                             <th title="Redação">Red</th>
                                             
+                                            {/* Natureza */}
                                             <th title="Física">Fís</th>
                                             <th title="Química">Quim</th>
                                             <th title="Biologia">Bio</th>
                                             
+                                            {/* Matemática */}
                                             <th title="Matemática">Mat</th>
                                             <th title="Matemática Aplicada">Mat.Apl</th>
 
+                                            {/* Humanas */}
                                             <th title="História">Hist</th>
                                             <th title="Geografia">Geo</th>
                                             <th title="Sociologia">Soc</th>
                                             <th title="Filosofia">Fil</th>
                                             
+                                            {/* Médias */}
                                             <th title="Unidade Curricular de Aprofundamento">UCA</th>
                                             <th title="Formação Técnica Profissional">Form.<br/>Téc.</th>
                                         </tr>
@@ -1665,10 +1670,31 @@
         };
 
         const MainApp = () => {
-            const [activeTab, setActiveTab] = useState('dashboard');
+            const [activeTab, setActiveTab] = useState('login'); // Inicia em Login
+            const [user, setUser] = useState(null);
             const [isSidebarOpen, setSidebarOpen] = useState(true);
             const dbService = useMemo(() => new DataService(), []);
+            const authService = useMemo(() => new AuthService(), []);
             const pdfGenerator = useMemo(() => new PDFGenerator(), []);
+
+            useEffect(() => {
+                // Monitora Auth State
+                const { data: { subscription } } = authService.onAuthStateChange((event, session) => {
+                    if (session?.user) {
+                        setUser(session.user);
+                        setActiveTab('dashboard');
+                    } else {
+                        setUser(null);
+                        setActiveTab('login');
+                    }
+                });
+                return () => subscription.unsubscribe();
+            }, [authService]);
+
+            // Se não logado, mostra LoginView
+            if (!user) {
+                return <LoginView authService={authService} />;
+            }
 
             const renderContent = () => {
                 switch(activeTab) {
@@ -1685,7 +1711,7 @@
                 <div className="wrapper">
                     <Sidebar activeTab={activeTab} onTabChange={setActiveTab} isOpen={isSidebarOpen} />
                     <div className={`main-content ${!isSidebarOpen ? 'expanded' : ''}`}>
-                        <Topbar onToggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
+                        <Topbar onToggleSidebar={() => setSidebarOpen(!isSidebarOpen)} authService={authService} />
                         <div className="content-area">
                             {renderContent()}
                         </div>
@@ -1699,5 +1725,4 @@
     </script>
 
 </body>
-
 </html>
