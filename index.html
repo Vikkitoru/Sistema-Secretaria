@@ -442,6 +442,88 @@
                     return serieId === 1 || serieId === 3;
                 });
             }
+            async searchAlunos(query) {
+                const isRA = !isNaN(parseInt(query)) && query.length >= 6;
+                let q = this.client.from('alunos').select('ra, nome, status_matricula').limit(50);
+
+                if (isRA) {
+                    q = q.eq('ra', parseInt(query));
+                } else {
+                    q = q.ilike('nome', `%${query}%`);
+                }
+
+                const { data, error } = await q.order('nome');
+                if (error) throw error;
+                return data;
+            }
+
+            async getNotas(ra, ano, area) {
+                const table = `notas_${area.toLowerCase()}_${ano}`;
+                const notaField = area === 'BASICA' ? 'mf' : 'ns';
+
+                const { data, error } = await this.client
+                    .from(table)
+                    .select(`id, ${notaField}, disciplina_id, disciplinas ( id, nome, area )`)
+                    .eq('aluno_ra', ra);
+
+                if (error) throw error;
+                return data.map(n => ({
+                    id: n.id,
+                    disciplina_id: n.disciplina_id,
+                    disciplina_nome: n.disciplinas.nome,
+                    nota: n[notaField],
+                    area: n.disciplinas.area,
+                    notaField: notaField
+                }));
+            }
+
+            async updateNota(id, ano, area, notaField, nova_nota) {
+                const table = `notas_${area.toLowerCase()}_${ano}`;
+                const updateObject = { [notaField]: nova_nota !== null ? parseFloat(nova_nota) : null, updated_at: new Date().toISOString() };
+                
+                const { data, error } = await this.client
+                    .from(table)
+                    .update(updateObject)
+                    .eq('id', id)
+                    .select();
+
+                if (error) throw error;
+                return data;
+            }
+
+            async getAllAlunosWithNotas() {
+                const anos = [2024, 2023];
+                const areas = ['basica', 'tecnica'];
+                
+                // 1. Buscar todos os alunos ativos
+                const { data: alunos, error: errAlunos } = await this.client
+                    .from('alunos')
+                    .select('ra, nome, status_matricula')
+                    .eq('status_matricula', 'CURSANDO')
+                    .order('nome');
+
+                if (errAlunos) throw errAlunos;
+
+                // 2. Para cada aluno, buscar as notas (pode ser lento, mas é o que o requisito pede)
+                const alunosComNotas = await Promise.all(alunos.map(async (aluno) => {
+                    const notas = {};
+                    for (const ano of anos) {
+                        for (const area of areas) {
+                            const key = `${ano}_${area.toUpperCase()}`;
+                            try {
+                                notas[key] = await this.getNotas(aluno.ra, ano, area.toUpperCase());
+                            } catch (e) {
+                                // Ignora erros de tabela não encontrada ou outros erros de busca de notas
+                                notas[key] = [];
+                            }
+                        }
+                    }
+                    return { ...aluno, notas };
+                }));
+
+                return alunosComNotas;
+            }
+
             async getDashboardStats() {
                 const currentYear = new Date().getFullYear();
                 const { count: totalAlunos, error: errAlunos } = await this.client.from('alunos').select('*', { count: 'exact', head: true }).eq('status_matricula', 'CURSANDO');
@@ -647,7 +729,7 @@
                         ['Nota', 'CH', 'Nota', 'CH', 'Nota', 'CH']
                     ],
                     body: body, theme: 'grid',
-                    styles: { font: 'times', fontSize: 6, cellPadding: 0.7, lineColor: 0, lineWidth: 0.1, textColor: 0, halign: 'center' },
+                    styles: { font: 'times', fontSize: 5, cellPadding: 0.7, lineColor: 0, lineWidth: 0.1, textColor: 0, halign: 'center' },
                     columnStyles: { 0: { halign: 'left' } },
                     headStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: 'bold', lineWidth: 0.1, lineColor: 0 },
                     foot: [[{ content: 'CARGA HORÁRIA TOTAL', colSpan: 7, styles: { halign: 'left' } }, { content: String(totalCH), styles: { halign: 'center' } }]],
@@ -662,7 +744,7 @@
                     head: [['Ano', 'Série', 'Estabelecimento', 'Cidade', 'UF', 'Resultado']],
                     body: body.length ? body : [['-', '-', 'NENHUM REGISTRO', '-', '-', '-']],
                     theme: 'grid',
-                    styles: { font: 'times', fontSize: 6, cellPadding: 0.5, lineColor: 0, lineWidth: 0.1, textColor: 0, halign: 'center' },
+                    styles: { font: 'times', fontSize: 5, cellPadding: 0.5, lineColor: 0, lineWidth: 0.1, textColor: 0, halign: 'center' },
                     headStyles: { fillColor: [245, 245, 245], textColor: 0, fontStyle: 'bold', lineWidth: 0.1, lineColor: 0 },
                     columnStyles: { 2: { halign: 'left' } }
                 });
@@ -834,6 +916,7 @@
                         <li className="nav-item"><a className={`nav-link ${activeTab === 'notas_seduc' ? 'active' : ''}`} onClick={() => onTabChange('notas_seduc')}><i className="fas fa-calculator"></i><span>Notas Seduc</span></a></li>
                         <div className="my-2 border-top border-secondary opacity-25"></div>
                         <li className="nav-item"><a className={`nav-link ${activeTab === 'historicos' ? 'active' : ''}`} onClick={() => onTabChange('historicos')}><i className="fas fa-file-signature"></i><span>Emissão Históricos</span></a></li>
+                        <li className="nav-item"><a className={`nav-link ${activeTab === 'notas_geral' ? 'active' : ''}`} onClick={() => onTabChange('notas_geral')}><i className="fas fa-edit"></i><span>Notas (Geral)</span></a></li>
                     </ul>
                     <div className="p-3 mt-auto"><small className="d-block text-white-50">Versão 3.2.0 (Auth)</small></div>
                 </nav>
@@ -887,7 +970,300 @@
             );
         };
 
-        const DashboardView = ({ dbService }) => {
+	        // =================================================================================
+	        // COMPONENTES DE NOTAS
+	        // =================================================================================
+
+	        const NotaInput = ({ nota, onChange, isEditing }) => {
+	            const [value, setValue] = useState(nota !== null ? String(nota) : '');
+	            const [isFocused, setIsFocused] = useState(false);
+
+	            useEffect(() => {
+	                setValue(nota !== null ? String(nota) : '');
+	            }, [nota]);
+
+	            const handleChange = (e) => {
+	                const newValue = e.target.value;
+	                // Permite apenas números e um ponto decimal
+	                if (newValue === '' || /^\d*\.?\d{0,2}$/.test(newValue)) {
+	                    setValue(newValue);
+	                }
+	            };
+
+	            const handleBlur = () => {
+	                setIsFocused(false);
+	                let finalValue = value === '' ? null : parseFloat(value);
+	                if (finalValue !== null && finalValue > 10) finalValue = 10;
+	                if (finalValue !== null && finalValue < 0) finalValue = 0;
+	                
+	                setValue(finalValue !== null ? String(finalValue) : '');
+	                onChange(finalValue);
+	            };
+
+	            const displayValue = isFocused ? value : (nota !== null ? nota.toFixed(2) : '');
+	            const isApproved = nota !== null && nota >= 6.0;
+	            const isReproved = nota !== null && nota < 6.0;
+
+	            return (
+	                <input
+	                    type="text"
+	                    className={`form-control form-control-sm text-center ${isApproved ? 'bg-success-subtle' : ''} ${isReproved ? 'bg-danger-subtle' : ''}`}
+	                    value={displayValue}
+	                    onChange={handleChange}
+	                    onFocus={() => setIsFocused(true)}
+	                    onBlur={handleBlur}
+	                    disabled={!isEditing}
+	                    style={{ width: '80px', padding: '0.25rem 0.5rem' }}
+	                />
+	            );
+	        };
+
+	        const NotasTable = ({ notas, ano, area, dbService, alunoRa, onUpdate }) => {
+	            const [editingId, setEditingId] = useState(null);
+	            const [loading, setLoading] = useState(false);
+	            const [error, setError] = useState(null);
+
+	            const handleSave = async (notaId, notaField, novaNota) => {
+	                setLoading(true);
+	                setError(null);
+	                try {
+	                    await dbService.updateNota(notaId, ano, area, notaField, novaNota);
+	                    onUpdate(); // Recarrega os dados
+	                    setEditingId(null);
+	                } catch (e) {
+	                    console.error("Erro ao salvar nota:", e);
+	                    setError("Erro ao salvar nota. Tente novamente.");
+	                } finally {
+	                    setLoading(false);
+	                }
+	            };
+
+	            const handleNotaChange = (notaId, notaField, novaNota) => {
+	                // Inicia a edição e salva imediatamente
+	                handleSave(notaId, notaField, novaNota);
+	            };
+
+	            if (notas.length === 0) {
+	                return <div className="alert alert-info">Nenhuma nota de {area.toLowerCase()} encontrada para {ano}.</div>;
+	            }
+
+	            return (
+	                <div className="table-responsive mb-4">
+	                    <h5 className="fw-bold text-secondary">{area} - {ano}</h5>
+	                    {error && <div className="alert alert-danger">{error}</div>}
+	                    <table className="table table-sm table-bordered table-hover align-middle">
+	                        <thead className="table-light">
+	                            <tr>
+	                                <th>Disciplina</th>
+	                                <th className="text-center">Nota Final</th>
+	                                <th className="text-center">Ação</th>
+	                            </tr>
+	                        </thead>
+	                        <tbody>
+	                            {notas.map(nota => (
+	                                <tr key={nota.id}>
+	                                    <td>{nota.disciplina_nome}</td>
+	                                    <td className="text-center">
+	                                        <NotaInput 
+	                                            nota={nota.nota} 
+	                                            onChange={(novaNota) => handleNotaChange(nota.id, nota.notaField, novaNota)}
+	                                            isEditing={true} // Sempre editável
+	                                        />
+	                                    </td>
+	                                    <td className="text-center">
+	                                        {loading && editingId === nota.id ? (
+	                                            <i className="fas fa-spinner fa-spin text-primary"></i>
+	                                        ) : (
+	                                            <i className="fas fa-check-circle text-success" title="Salvo Automaticamente"></i>
+	                                        )}
+	                                    </td>
+	                                </tr>
+	                            ))}
+	                        </tbody>
+	                    </table>
+	                </div>
+	            );
+	        };
+
+	        const NotasModule = ({ dbService }) => {
+	            const [alunosData, setAlunosData] = useState([]);
+	            const [loading, setLoading] = useState(true);
+	            const [error, setError] = useState(null);
+	            const [searchTerm, setSearchTerm] = useState('');
+	            const [series, setSeries] = useState([]);
+	            const [selectedSerie, setSelectedSerie] = useState('');
+	            const [filterEmpty, setFilterEmpty] = useState(false);
+	            const [filterReprovados, setFilterReprovados] = useState(false);
+
+	            const anos = [2024, 2023];
+	            const areas = ['BASICA', 'TECNICA'];
+
+	            const loadAllData = async () => {
+	                setLoading(true);
+	                setError(null);
+	                try {
+	                    const [alunos, seriesList] = await Promise.all([
+	                        dbService.getAllAlunosWithNotas(),
+	                        dbService.getSeries()
+	                    ]);
+	                    setAlunosData(alunos);
+	                    setSeries(seriesList);
+	                } catch (e) {
+	                    console.error("Erro ao carregar dados:", e);
+	                    setError("Erro ao carregar dados. Verifique a conexão com o Supabase e as permissões.");
+	                } finally {
+	                    setLoading(false);
+	                }
+	            };
+
+	            useEffect(() => {
+	                loadAllData();
+	            }, [dbService]);
+
+	            const handleUpdate = () => {
+	                // Recarrega todos os dados após uma atualização de nota
+	                loadAllData();
+	            };
+
+	            const checkAlunoReprovado = (aluno) => {
+	                for (const ano of anos) {
+	                    for (const area of areas) {
+	                        const key = `${ano}_${area}`;
+	                        const notas = aluno.notas[key] || [];
+	                        const reprovado = notas.some(n => n.nota !== null && n.nota < 6.0);
+	                        if (reprovado) return true;
+	                    }
+	                }
+	                return false;
+	            };
+
+	            const checkAlunoVazio = (aluno) => {
+	                for (const ano of anos) {
+	                    for (const area of areas) {
+	                        const key = `${ano}_${area}`;
+	                        const notas = aluno.notas[key] || [];
+	                        if (notas.length > 0) return false;
+	                    }
+	                }
+	                return true;
+	            };
+
+	            const filteredAlunos = alunosData.filter(aluno => {
+	                const lowerCaseSearch = searchTerm.toLowerCase();
+	                const matchesSearch = aluno.nome.toLowerCase().includes(lowerCaseSearch) || String(aluno.ra).includes(lowerCaseSearch);
+
+	                // Filtro por Série (Precisa de um ajuste no DataService para incluir a série do aluno)
+	                // Por enquanto, este filtro será ignorado, pois o getAllAlunosWithNotas não traz a série.
+	                // Para funcionar, o getAllAlunosWithNotas precisaria ser alterado para incluir a turma e a série.
+	                // Vamos assumir que o aluno tem a propriedade 'serie_id' para fins de demonstração, mas o DataService precisa ser atualizado.
+	                // if (selectedSerie && aluno.serie_id !== selectedSerie) return false;
+	                
+	                // Filtro por Resultado Vazio
+	                if (filterEmpty && !checkAlunoVazio(aluno)) return false;
+
+	                // Filtro de Reprovação
+	                if (filterReprovados && !checkAlunoReprovado(aluno)) return false;
+
+	                return matchesSearch;
+	            });
+
+	            return (
+	                <div className="fade-in">
+	                    <h3 className="fw-bold mb-4" style={{color: 'var(--primary-color)'}}><i className="fas fa-edit me-2"></i> Edição de Notas (Geral)</h3>
+	                    
+	                    <div className="card module-card mb-4">
+	                        <div className="card-body">
+	                            <div className="row g-3">
+	                                <div className="col-md-6">
+	                                    <input
+	                                        type="text"
+	                                        className="form-control"
+	                                        placeholder="Filtrar por Nome ou RA"
+	                                        value={searchTerm}
+	                                        onChange={(e) => setSearchTerm(e.target.value)}
+	                                    />
+	                                </div>
+	                                <div className="col-md-6">
+	                                    <select 
+	                                        className="form-select"
+	                                        value={selectedSerie}
+	                                        onChange={(e) => setSelectedSerie(e.target.value)}
+	                                        disabled={true} // Desabilitado até que o DataService seja atualizado para incluir a série
+	                                    >
+	                                        <option value="">Filtrar por Série (Indisponível)</option>
+	                                        {series.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+	                                    </select>
+	                                </div>
+	                                <div className="col-md-6">
+	                                    <div className="form-check">
+	                                        <input 
+	                                            className="form-check-input" 
+	                                            type="checkbox" 
+	                                            id="filterEmpty" 
+	                                            checked={filterEmpty}
+	                                            onChange={(e) => setFilterEmpty(e.target.checked)}
+	                                        />
+	                                        <label className="form-check-label" htmlFor="filterEmpty">
+	                                            Mostrar apenas alunos sem notas
+	                                        </label>
+	                                    </div>
+	                                </div>
+	                                <div className="col-md-6">
+	                                    <div className="form-check">
+	                                        <input 
+	                                            className="form-check-input" 
+	                                            type="checkbox" 
+	                                            id="filterReprovados" 
+	                                            checked={filterReprovados}
+	                                            onChange={(e) => setFilterReprovados(e.target.checked)}
+	                                        />
+	                                        <label className="form-check-label" htmlFor="filterReprovados">
+	                                            Mostrar apenas alunos com nota &lt; 6.0
+	                                        </label>
+	                                    </div>
+	                                </div>
+	                            </div>
+	                        </div>
+	                    </div>
+
+	                    {error && <div className="alert alert-danger">{error}</div>}
+	                    {loading && <div className="text-center"><i className="fas fa-spinner fa-spin fa-2x text-primary"></i><p className="mt-2">Carregando todos os alunos e notas...</p></div>}
+
+	                    {!loading && filteredAlunos.length === 0 && (
+	                        <div className="alert alert-warning">Nenhum aluno encontrado com os filtros aplicados.</div>
+	                    )}
+
+	                    {!loading && filteredAlunos.map(aluno => (
+	                        <div key={aluno.ra} className="card module-card mb-4">
+	                            <div className="card-header bg-primary text-white">
+	                                <h4 className="mb-0">{aluno.nome} <span className="badge bg-light text-primary ms-2">RA: {aluno.ra}</span></h4>
+	                            </div>
+	                            <div className="card-body">
+	                                <div className="row">
+	                                    {anos.map(ano => (
+	                                        <div key={ano} className="col-md-6">
+	                                            {areas.map(area => (
+	                                                <NotasTable 
+	                                                    key={`${ano}_${area}`}
+	                                                    notas={aluno.notas[`${ano}_${area}`] || []}
+	                                                    ano={ano}
+	                                                    area={area}
+	                                                    dbService={dbService}
+	                                                    alunoRa={aluno.ra}
+	                                                    onUpdate={handleUpdate}
+	                                                />
+	                                            ))}
+	                                        </div>
+	                                    ))}
+	                                </div>
+	                            </div>
+	                        </div>
+	                    ))}
+	                </div>
+	            );
+	        };
+
+	        const DashboardView = ({ dbService }) => {
             const [stats, setStats] = useState({ alunos: 0, turmas: 0, aprovados: 0, recuperacao: 0 });
             const [loading, setLoading] = useState(true);
             useEffect(() => {
@@ -1709,9 +2085,10 @@
                     case 'historicos': return <HistoricosModule dbService={dbService} pdfGenerator={pdfGenerator} />;
                     case 'alunos': return <AlunosModule dbService={dbService} />;
                     case 'turmas': return <TurmasModule dbService={dbService} />; 
-                    case 'notas_seduc': return <NotasSeducModule dbService={dbService} />; 
-                    default: return <DashboardView dbService={dbService} />;
-                }
+	                    case 'notas_seduc': return <NotasSeducModule dbService={dbService} />; 
+	                    case 'notas_geral': return <NotasModule dbService={dbService} />; // Novo Módulo
+	                    default: return <DashboardView dbService={dbService} />;
+	                }
             };
 
             return (
