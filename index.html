@@ -575,6 +575,13 @@
                 });
                 return { dadosTabela, totalCH, dadosTrajetoria };
             }
+            _addDayToDate(dateString) {
+                if (!dateString) return null;
+                const date = new Date(dateString);
+                date.setDate(date.getDate() + 1);
+                return date.toISOString().split('T')[0]; // Retorna no formato 'YYYY-MM-DD'
+            }
+
             _formatDate(dateString) {
                 if (!dateString) return '-';
                 const date = new Date(dateString);
@@ -604,7 +611,7 @@
                 const fields = [
                     {l:"Aluno(a):", v:nomeAluno.toUpperCase(), x:10, w:110, y:0},
                     {l:"Cpf:", v: d.cpf || '-', x:120, w:45, y:0},
-                    {l:"Data Nasc.:", v: this._formatDate(d.data_nascimento+1), x:165, w:35, y:0},
+                    {l:"Data Nasc.:", v: this._formatDate(this._addDayToDate(d.data_nascimento)), x:165, w:35, y:0},
                     {l:"Nacionalidade:", v: (d.nacionalidade || 'BRASILEIRA').toUpperCase(), x:10, w:60, y:1},
                     {l:"Natural de:", v: (d.naturalidade || '-').toUpperCase(), x:70, w:90, y:1},
                     {l:"Estado:", v: d.uf_nascimento || '-', x:160, w:40, y:1},
@@ -1726,4 +1733,3 @@
 
 </body>
 </html>
-
