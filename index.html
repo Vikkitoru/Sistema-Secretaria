@@ -2062,7 +2062,15 @@
         };
 
         const MainApp = () => {
-            const [activeTab, setActiveTab] = useState('login'); // Inicia em Login
+		// 1. Tenta ler do localStorage, se não tiver nada, usa 'dashboard'
+		    const [activeTab, setActiveTab] = useState(() => {
+		        return localStorage.getItem('lastActiveTab') || 'dashboard';
+		    });
+		
+		    // 2. Sempre que activeTab mudar, salva no localStorage
+		    useEffect(() => {
+		        localStorage.setItem('lastActiveTab', activeTab);
+		    }, [activeTab]);
             const [user, setUser] = useState(null);
             const [isSidebarOpen, setSidebarOpen] = useState(true);
             const dbService = useMemo(() => new DataService(), []);
@@ -2119,3 +2127,4 @@
 
 </body>
 </html>
+
