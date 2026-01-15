@@ -391,8 +391,17 @@
                             nome: nomeTurma || 'N/D',
                             cursos: { nome: 'TÉCNICO' }
                         },
-                        anual_basica: basicas ? basicas.map(n => ({ mf: n.mf, disciplinas: n.disciplinas })) : [],
-                        notas_tecnica: tecnicas ? tecnicas.map(n => ({ ns: n.ns, disciplinas: n.disciplinas })) : []
+                        // Adicione carga_horaria: n.carga_horaria abaixo
+                        anual_basica: basicas ? basicas.map(n => ({ 
+                            mf: n.mf, 
+                            carga_horaria: n.carga_horaria, // <--- NOVA LINHA
+                            disciplinas: n.disciplinas 
+                        })) : [],
+                        notas_tecnica: tecnicas ? tecnicas.map(n => ({ 
+                            ns: n.ns, 
+                            carga_horaria: n.carga_horaria, // <--- NOVA LINHA
+                            disciplinas: n.disciplinas 
+                        })) : []
                     };
                 };
 
@@ -630,7 +639,7 @@
                     }
                     const processar = (n, tipo) => {
                         const disc = n.disciplinas?.nome?.toUpperCase() || 'S/N';
-                        const ch = n.disciplinas?.carga_horaria || 80;
+                        const ch = n.carga_horaria || n.disciplinas?.carga_horaria || 80;
                         const val = tipo === 'B' ? n.mf : n.ns;
                         if (!historico[disc]) historico[disc] = { type: tipo, 1: {n:'-',c:0}, 2: {n:'-',c:0}, 3: {n:'-',c:0} };
                         if (serie >= 1 && serie <= 3) {
